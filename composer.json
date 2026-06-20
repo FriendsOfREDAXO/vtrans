@@ -1,0 +1,12 @@
+{
+    "autoload": {
+        "psr-4": {
+            "FriendsOfRedaxo\\VTrans\\": "lib/"
+        }
+    },
+    "require": {
+        "php": ">=8.2",
+        "guzzlehttp/guzzle": "^7.9",
+        "google/auth": "^1.39"
+    }
+}

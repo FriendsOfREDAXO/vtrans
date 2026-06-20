@@ -1,0 +1,53 @@
+package: vtrans
+version: '0.1.0-beta1'
+name: vTrans
+author: Friends Of REDAXO | Matthias Weiss | VIEWSION.net (https://github.com/VIEWSION)
+supportpage: https://github.com/FriendsOfREDAXO/vtrans
+license: MIT
+
+page:
+    title: translate:vtrans_title
+    pjax: true
+    icon: rex-icon fa-random
+    perm: vtrans[]
+    subpages:
+        playground:
+            title: translate:vtrans_playground
+            icon: rex-icon fa-random
+            perm: vtrans[]
+        connections:
+            title: translate:vtrans_connections
+            icon: rex-icon fa-plug
+            perm: admin
+        data:
+            title: translate:vtrans_data
+            icon: rex-icon fa-database
+            perm: vtrans[]
+        documentation:
+            title: translate:vtrans_documentation
+            perm: admin
+            icon: rex-icon fa-question-circle
+            itemclass: pull-right
+            subpages:
+                readme:
+                    title: translate:vtrans_documentation_readme
+                    subPath: README.md
+                changelog:
+                    title: translate:vtrans_documentation_changelog
+                    subPath: CHANGELOG.md
+                license:
+                    title: translate:vtrans_documentation_license
+                    subPath: LICENSE
+permissions:
+  - vtrans[]
+
+requires:
+    php:
+        version: '>=8.2'
+    redaxo: '^5.17.0'
+
+installer_ignore:
+    - .DS_Store
+    - composer.json
+    - composer.lock
+
