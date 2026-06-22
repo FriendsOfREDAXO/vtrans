@@ -9,6 +9,25 @@ $func = rex_request('func', 'string', '');
 $id = rex_request('id', 'int', 0);
 $messages = [];
 
+$normalizeString = static function (mixed $value): string {
+    return is_scalar($value) ? (string) $value : '';
+};
+$normalizeInt = static function (mixed $value, int $default = 0): int {
+    if (is_int($value)) {
+        return $value;
+    }
+
+    if (is_float($value)) {
+        return (int) $value;
+    }
+
+    if (is_string($value) && is_numeric($value)) {
+        return (int) $value;
+    }
+
+    return $default;
+};
+
 // Available providers for the select dropdown.
 $availableProviders = VTrans::getAvailableProviders();
 $providerOptions = [];
@@ -190,9 +209,9 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
 
     if ('add' === $func || null !== $connection) {
         // Determine current values (from POST on error/reload, from DB on edit, or defaults on add).
-        $isSubmit = rex_post('connection-submit', 'boolean');
-        $isProviderReload = rex_post('_reload_for_provider', 'int', 0) === 1;
-        $isFormPost = $isSubmit || $isProviderReload;
+        $connectionSubmitValue = (string) rex_post('connection-submit', 'string', '');
+        $providerReloadValue = (string) rex_post('_reload_for_provider', 'string', '');
+        $isFormPost = '1' === $connectionSubmitValue || '1' === $providerReloadValue;
         $isEditMode = $id > 0;
 
         $currentProvider = $isFormPost ? rex_post('provider', 'string', '') : ($connection?->getProvider() ?? '');
@@ -261,15 +280,14 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                         'api_key'       => $currentApiKey,
                         'api_url'       => $currentApiUrl,
                         'system_prompt' => $currentSystemPrompt,
-                        'timeout'       => (string) $currentTimeout,
                         default         => $isFormPost
-                            ? rex_post($fieldName, 'string', (string) ($fieldDef['default'] ?? ''))
-                            : (string) ($currentParams[$fieldName] ?? ($fieldDef['default'] ?? '')),
+                            ? rex_post($fieldName, 'string', $normalizeString($fieldDef['default'] ?? ''))
+                            : $normalizeString($currentParams[$fieldName] ?? ($fieldDef['default'] ?? '')),
                     };
                 } else {
                     $fieldValue = $isFormPost
-                        ? rex_post($fieldName, 'string', (string) ($currentParams[$fieldName] ?? ($fieldDef['default'] ?? '')))
-                        : (string) ($currentParams[$fieldName] ?? ($fieldDef['default'] ?? ''));
+                        ? rex_post($fieldName, 'string', $normalizeString($currentParams[$fieldName] ?? ($fieldDef['default'] ?? '')))
+                        : $normalizeString($currentParams[$fieldName] ?? ($fieldDef['default'] ?? ''));
                 }
 
                 $n = [];
@@ -278,17 +296,17 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                     . (!empty($fieldDef['required']) ? ' *' : '')
                     . '</label>';
 
-                $defaultAttr = (isset($fieldDef['default']) && '' !== (string) $fieldDef['default'])
-                    ? ' placeholder="' . rex_escape((string) $fieldDef['default']) . '"'
+                $defaultAttr = (isset($fieldDef['default']) && '' !== $normalizeString($fieldDef['default']))
+                    ? ' placeholder="' . rex_escape($normalizeString($fieldDef['default'])) . '"'
                     : '';
 
-                if ('textarea' === ($fieldDef['type'] ?? 'text')) {
+                if ('textarea' === $fieldDef['type']) {
                     $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="3">' . rex_escape($fieldValue) . '</textarea>';
                 } elseif ('api_key' === $fieldName && '' !== $fieldValue && !$isFormPost) {
                     // API Key field - REDAXO automatically adds a view button for password inputs
                     $n['field'] = '<input type="password" class="form-control" id="vtrans-connection-api-key" name="api_key" value="' . rex_escape($fieldValue) . '"' . $defaultAttr . ' />';
                 } else {
-                    $inputType = 'number' === ($fieldDef['type'] ?? 'text') ? 'number' : 'text';
+                    $inputType = 'number' === $fieldDef['type'] ? 'number' : 'text';
                     $n['field'] = '<input type="' . $inputType . '" class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" value="' . rex_escape($fieldValue) . '"' . $defaultAttr . ' />';
                 }
 

@@ -5,11 +5,12 @@ namespace FriendsOfRedaxo\VTrans;
 /**
  * Value object for provider responses (translation + raw metadata payload).
  */
-readonly class VTransProviderResult
+class VTransProviderResult
 {
+	/** @param array<string, mixed> $data */
 	public function __construct(
-		private readonly string $translation,
-		private readonly array $data = [],
+		private string $translation,
+		private array $data = [],
 	) {}
 
 	public function getTranslation(): string
@@ -17,6 +18,7 @@ readonly class VTransProviderResult
 		return $this->translation;
 	}
 
+	/** @return array<string, mixed> */
 	public function getData(): array
 	{
 		return $this->data;

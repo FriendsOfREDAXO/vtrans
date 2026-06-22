@@ -16,6 +16,7 @@ use rex_exception;
 class VTransDeepLProvider implements VTransProviderInterface
 {
 	private const DEFAULT_API_URL = 'https://api-free.deepl.com';
+	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 	private const CUSTOM_INSTRUCTIONS_TARGET_LANGS = ['DE', 'EN', 'ES', 'FR', 'IT', 'JA', 'KO', 'ZH'];
 
@@ -24,16 +25,21 @@ class VTransDeepLProvider implements VTransProviderInterface
 		return in_array($api, ['deepl-v2', 'deepl-api-free-v2', 'deepl-api-pro-v2'], true);
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
-		$promptContext = (string) ($requestOptions['promptContext'] ?? '');
+		$promptContext = $this->normalizeString($requestOptions['promptContext'] ?? null);
 		$debug = !empty($requestOptions['debug']);
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 		$history = [];
 		$stack = HandlerStack::create();
 		$stack->push(Middleware::history($history));
+		$apiUrl = $this->normalizeString($config['apiUrl'] ?? self::DEFAULT_API_URL);
 		$client = new Client([
-			'base_uri' => rtrim($config['apiUrl'], '/') . '/',
+			'base_uri' => rtrim($apiUrl, '/') . '/',
 			'timeout' => $config['timeout'],
 			'handler' => $stack,
 		]);
@@ -60,25 +66,33 @@ class VTransDeepLProvider implements VTransProviderInterface
 			$params['custom_instructions'] = $customInstructions;
 		}
 
+		$apiKey = $this->normalizeString($config['apiKey'] ?? null);
 		try {
-			$data = $this->sendRequest($client, $config['apiKey'], $params);
+			$data = $this->sendRequest($client, $apiKey, $params);
 		} finally {
 			if (!empty($history)) {
-				$this->lastDebugData = $this->buildDebugData($history[0]);
+				$debugTransaction = $history[0] ?? null;
+				$debugData = [];
+				if (is_array($debugTransaction)) {
+					/** @var array<string, mixed> $debugData */
+					$debugData = $debugTransaction;
+				}
+				$this->lastDebugData = $this->buildDebugData($debugData);
 			}
 		}
 
-		$translationEntry = $data['translations'][0] ?? [];
-		$translation = (string) ($translationEntry['text'] ?? '');
+		$translations = is_array($data['translations'] ?? null) ? $data['translations'] : [];
+		$translationEntry = [] !== $translations && isset($translations[0]) && is_array($translations[0]) ? $translations[0] : [];
+		$translation = $this->normalizeString($translationEntry['text'] ?? null);
 
 		if ('' === $translation) {
 			throw new rex_exception('DeepL returned an empty translation response.');
 		}
 
 		$resultData = [
-			'model' => $modelData['key'],
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
 			'detected_source_language' => $translationEntry['detected_source_language'] ?? null,
 			'billed_characters' => $translationEntry['billed_characters'] ?? null,
 			'model_type_used' => $translationEntry['model_type_used'] ?? null,
@@ -94,30 +108,36 @@ class VTransDeepLProvider implements VTransProviderInterface
 		return new VTransProviderResult($translation, $resultData);
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
 	public function getUsage(array $modelData): array
 	{
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
+		$apiUrl = $this->normalizeString($config['apiUrl'] ?? self::DEFAULT_API_URL);
 		$client = new Client([
-			'base_uri' => rtrim($config['apiUrl'], '/') . '/',
+			'base_uri' => rtrim($apiUrl, '/') . '/',
 			'timeout' => $config['timeout'],
 		]);
 
+		$apiKey = $this->normalizeString($config['apiKey'] ?? null);
 		try {
 			$response = $client->request('GET', 'v2/usage', [
 				'headers' => [
-					'Authorization' => 'DeepL-Auth-Key ' . $config['apiKey'],
+					'Authorization' => 'DeepL-Auth-Key ' . $apiKey,
 				],
 			]);
 
 			$data = json_decode((string) $response->getBody(), true) ?? [];
 		} catch (GuzzleException $e) {
-			throw new rex_exception('DeepL usage request failed: ' . $e->getMessage(), $e);
+			throw new rex_exception('DeepL usage request failed: ' . $e->getMessage(), new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
 		$character = null;
-		if (isset($data['character_count'], $data['character_limit'])) {
-			$count = (int) $data['character_count'];
-			$limit = (int) $data['character_limit'];
+		if (is_array($data) && isset($data['character_count'], $data['character_limit'])) {
+			$count = $this->normalizeInt($data['character_count'], 0);
+			$limit = $this->normalizeInt($data['character_limit'], 0);
 			$character = [
 				'count' => $count,
 				'limit' => $limit,
@@ -128,9 +148,9 @@ class VTransDeepLProvider implements VTransProviderInterface
 
 		return [
 			'provider' => 'deepl',
-			'model' => (string) ($modelData['key'] ?? ''),
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
 			'any_limit_reached' => null !== $character && $character['limit_reached'],
 			'character' => $character,
 			'document' => null,
@@ -225,6 +245,7 @@ class VTransDeepLProvider implements VTransProviderInterface
 		return 'DeepL';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['deepl-v2'];
@@ -240,21 +261,63 @@ class VTransDeepLProvider implements VTransProviderInterface
 		];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		$errors = [];
-		if (empty(trim((string) ($values['api_key'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['api_key'] ?? null)))) {
 			$errors['api_key'] = 'API Key is required.';
 		}
 		return $errors;
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
+	{
+		if (!is_array($config)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
+	}
+
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array<string, mixed>
+	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
-		$api = trim((string) ($modelConfig['api'] ?? ''));
-		$apiKey = trim((string) ($modelConfig['apiKey'] ?? ''));
-		$apiUrl = trim((string) ($modelConfig['apiUrl'] ?? ''));
-		$timeout = (int) ($modelConfig['timeout'] ?? 30);
+		$api = trim($this->normalizeString($modelConfig['api'] ?? null));
+		$apiKey = trim($this->normalizeString($modelConfig['apiKey'] ?? null));
+		$apiUrl = trim($this->normalizeString($modelConfig['apiUrl'] ?? null));
+		$timeout = $this->normalizeInt($modelConfig['timeout'] ?? null, 30);
 		$timeout = max(1, min($timeout, 300));
 
 		if ('' === $apiKey) {
@@ -274,13 +337,19 @@ class VTransDeepLProvider implements VTransProviderInterface
 			'apiKey' => $apiKey,
 			'apiUrl' => $apiUrl,
 			'timeout' => $timeout,
-			'systemPrompt' => trim((string) ($modelConfig['systemPrompt'] ?? '')),
+			'systemPrompt' => trim($this->normalizeString($modelConfig['systemPrompt'] ?? null)),
 			'customInstructions' => $modelConfig['customInstructions'] ?? [],
 		];
 	}
 
+	/**
+	 * @param array<string, mixed> $params
+	 * @return array<string, mixed>
+	 */
 	private function sendRequest(Client $client, string $apiKey, array $params): array
 	{
+		$apiKey = $this->normalizeString($apiKey);
+
 		try {
 			$response = $client->request('POST', 'v2/translate', [
 				'headers' => [
@@ -290,17 +359,28 @@ class VTransDeepLProvider implements VTransProviderInterface
 				'json' => $params,
 			]);
 
-			$body = json_decode((string) $response->getBody(), true);
-			if (!is_array($body)) {
+			$decodedBody = json_decode((string) $response->getBody(), true);
+			$body = [];
+			if (is_array($decodedBody)) {
+				foreach ($decodedBody as $key => $value) {
+					$body[is_string($key) ? $key : (string) $key] = $value;
+				}
+			}
+			if ([] === $body) {
 				throw new rex_exception('DeepL returned invalid JSON.');
 			}
 
 			return $body;
 		} catch (GuzzleException $e) {
-			throw new rex_exception('DeepL API request failed: ' . $e->getMessage(), $e);
+			throw new rex_exception('DeepL API request failed: ' . $e->getMessage(), new \RuntimeException($e->getMessage(), 0, $e));
 		}
 	}
 
+	/**
+	 * @param array<string, mixed> $config
+	 * @param array<string, mixed> $requestOptions
+	 * @return list<string>
+	 */
 	private function buildCustomInstructions(array $config, array $requestOptions): array
 	{
 		$instructions = [];
@@ -312,7 +392,7 @@ class VTransDeepLProvider implements VTransProviderInterface
 
 		if (is_array($configInstructions)) {
 			foreach ($configInstructions as $instruction) {
-				$instruction = trim((string) $instruction);
+				$instruction = $this->normalizeString($instruction);
 				if ('' !== $instruction) {
 					$instructions[] = $instruction;
 				}
@@ -326,7 +406,7 @@ class VTransDeepLProvider implements VTransProviderInterface
 
 		if (is_array($requestInstructions)) {
 			foreach ($requestInstructions as $instruction) {
-				$instruction = trim((string) $instruction);
+				$instruction = $this->normalizeString($instruction);
 				if ('' !== $instruction) {
 					$instructions[] = $instruction;
 				}
@@ -340,44 +420,56 @@ class VTransDeepLProvider implements VTransProviderInterface
 
 	private function supportsCustomInstructions(string $targetLang): bool
 	{
-		$baseLang = strtoupper((string) explode('-', $targetLang, 2)[0]);
+		$baseLang = strtoupper($this->normalizeString(explode('-', $targetLang, 2)[0]));
 		return in_array($baseLang, self::CUSTOM_INSTRUCTIONS_TARGET_LANGS, true);
 	}
 
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return $this->lastDebugData;
 	}
 
+	/**
+	 * @param array<string, mixed> $transaction
+	 * @return array<string, mixed>
+	 */
 	private function buildDebugData(array $transaction): array
 	{
 		$req = $transaction['request'] ?? null;
 		$res = $transaction['response'] ?? null;
-
+		$headers = [];
 		$requestBody = null;
-		if (null !== $req) {
+
+		if ($req instanceof \Psr\Http\Message\RequestInterface) {
 			$bodyStr = (string) $req->getBody();
 			$decoded = json_decode($bodyStr, true);
 			$requestBody = is_array($decoded) ? $decoded : $bodyStr;
-			// Mask the Authorization header.
 			$headers = $req->getHeaders();
 			if (isset($headers['Authorization'])) {
 				$headers['Authorization'] = ['***'];
 			}
+		} else {
+			$req = null;
+		}
+
+		$responseData = null;
+		if ($res instanceof \Psr\Http\Message\ResponseInterface) {
+			$responseData = [
+				'status' => $res->getStatusCode(),
+				'headers' => $res->getHeaders(),
+				'body' => json_decode((string) $res->getBody(), true),
+			];
 		}
 
 		return [
 			'request' => null !== $req ? [
 				'method' => $req->getMethod(),
 				'uri' => (string) $req->getUri(),
-				'headers' => $headers ?? [],
+				'headers' => $headers,
 				'body' => $requestBody,
 			] : null,
-			'response' => null !== $res ? [
-				'status' => $res->getStatusCode(),
-				'headers' => $res->getHeaders(),
-				'body' => json_decode((string) $res->getBody(), true),
-			] : null,
+			'response' => $responseData,
 		];
 	}
 }

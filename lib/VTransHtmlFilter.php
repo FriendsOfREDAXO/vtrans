@@ -216,7 +216,7 @@ class VTransHtmlFilter
 		$len   = strlen($html);
 		$qtag  = preg_quote($tagName, '/');
 
-		while ($pos < $len && $depth > 0) {
+		while ($pos < $len) {
 			// Next non-self-closing opening tag of the same name.
 			preg_match('/<' . $qtag . '\b[^>]*(?<!\/)>/si', $html, $openM, PREG_OFFSET_CAPTURE, $pos);
 			// Next closing tag of the same name.

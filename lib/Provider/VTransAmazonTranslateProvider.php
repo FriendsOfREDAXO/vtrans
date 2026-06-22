@@ -18,6 +18,7 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 {
 	private const SERVICE = 'translate';
 	private const TARGET = 'AWSShineFrontendService_20170701.TranslateText';
+	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 
 	public function supports(string $api): bool
@@ -25,10 +26,14 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		return 'amazon-translate-v2' === $api;
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
 		$debug = !empty($requestOptions['debug']);
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 		$history = [];
 
 		$stack = HandlerStack::create();
@@ -39,7 +44,7 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		]);
 
 		$payloadData = [
-			'Text' => (string) $text,
+			'Text' => $this->normalizeString($text),
 			'TextType' => 'html' === strtolower(trim($format)) ? 'html' : 'text',
 			'SourceLanguageCode' => null !== $srcLang && '' !== trim($srcLang)
 				? $this->normalizeLanguageCode($srcLang)
@@ -48,26 +53,33 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		];
 		$payload = (string) json_encode($payloadData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-		$headers = $this->buildSignedHeaders('POST', $config['apiUrl'], $payload, $config);
+		$apiUrl = $this->normalizeString($config['apiUrl'] ?? null);
+		$headers = $this->buildSignedHeaders('POST', $apiUrl, $payload, $config);
 
 		try {
-			$data = $this->sendTranslateRequest($client, $config['apiUrl'], $headers, $payload);
+			$data = $this->sendTranslateRequest($client, $apiUrl, $headers, $payload);
 		} finally {
 			if (!empty($history)) {
-				$this->lastDebugData = $this->buildDebugData($history[0]);
+				$debugTransaction = $history[0] ?? null;
+				$debugData = [];
+				if (is_array($debugTransaction)) {
+					/** @var array<string, mixed> $debugData */
+					$debugData = $debugTransaction;
+				}
+				$this->lastDebugData = $this->buildDebugData($debugData);
 			}
 		}
 
-		$translation = (string) ($data['TranslatedText'] ?? '');
+		$translation = $this->normalizeString($data['TranslatedText'] ?? null);
 		if ('' === $translation) {
 			throw new rex_exception('Amazon Translate returned an empty translation response.');
 		}
 
 		$resultData = [
-			'model' => $modelData['key'],
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
-			'region' => $config['region'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
+			'region' => $this->normalizeString($config['region'] ?? null),
 			'source_language' => $data['SourceLanguageCode'] ?? $payloadData['SourceLanguageCode'],
 			'target_language' => $data['TargetLanguageCode'] ?? $payloadData['TargetLanguageCode'],
 			'text_type' => $payloadData['TextType'],
@@ -81,16 +93,20 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		return new VTransProviderResult($translation, $resultData);
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
 	public function getUsage(array $modelData): array
 	{
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 
 		return [
 			'provider' => 'amazon-translate',
-			'model' => (string) ($modelData['key'] ?? ''),
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
-			'region' => $config['region'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
+			'region' => $this->normalizeString($config['region'] ?? null),
 			'usage_supported' => false,
 			'character' => null,
 		];
@@ -152,15 +168,56 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		return 'en';
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
+	{
+		if (!is_array($config)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
+	}
+
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array<string, mixed>
+	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
-		$api = trim((string) ($modelConfig['api'] ?? ''));
-		$region = trim((string) ($modelConfig['region'] ?? ''));
-		$accessKey = trim((string) ($modelConfig['accessKey'] ?? ''));
-		$secretKey = trim((string) ($modelConfig['secretKey'] ?? ''));
-		$sessionToken = trim((string) ($modelConfig['sessionToken'] ?? ''));
-		$apiUrl = trim((string) ($modelConfig['apiUrl'] ?? ''));
-		$timeout = (int) ($modelConfig['timeout'] ?? 30);
+		$api = trim($this->normalizeString($modelConfig['api'] ?? null));
+		$region = trim($this->normalizeString($modelConfig['region'] ?? null));
+		$accessKey = trim($this->normalizeString($modelConfig['accessKey'] ?? null));
+		$secretKey = trim($this->normalizeString($modelConfig['secretKey'] ?? null));
+		$sessionToken = trim($this->normalizeString($modelConfig['sessionToken'] ?? null));
+		$apiUrl = trim($this->normalizeString($modelConfig['apiUrl'] ?? null));
+		$timeout = $this->normalizeInt($modelConfig['timeout'] ?? null, 30);
 		$timeout = max(1, min($timeout, 300));
 
 		if ('' === $region) {
@@ -185,6 +242,10 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		];
 	}
 
+	/**
+	 * @param array<string, string> $headers
+	 * @return array<string, mixed>
+	 */
 	private function sendTranslateRequest(Client $client, string $apiUrl, array $headers, string $payload): array
 	{
 		try {
@@ -196,12 +257,19 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 			throw new rex_exception('Amazon Translate request timed out or connection failed. Check apiUrl and timeout.', $e);
 		} catch (GuzzleException $e) {
 			$message = $e->getMessage();
-			if (method_exists($e, 'getResponse') && null !== $e->getResponse()) {
-				$status = $e->getResponse()->getStatusCode();
-				$body = (string) $e->getResponse()->getBody();
+			$response = null;
+			if (method_exists($e, 'getResponse')) {
+				$response = $e->getResponse();
+			}
+			if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+				$status = $response->getStatusCode();
+				$body = (string) $response->getBody();
 				if ('' !== $body) {
 					$decodedBody = json_decode($body, true);
-					$apiMessage = (string) ($decodedBody['message'] ?? $decodedBody['Message'] ?? '');
+					$apiMessage = '';
+					if (is_array($decodedBody)) {
+						$apiMessage = $this->normalizeString($decodedBody['message'] ?? $decodedBody['Message'] ?? null);
+					}
 					if ('' !== $apiMessage) {
 						$message = $apiMessage;
 					}
@@ -209,22 +277,27 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 				$message .= ' (HTTP ' . $status . ')';
 			}
 
-			throw new rex_exception('Amazon Translate request failed: ' . $message, $e);
+			throw new rex_exception('Amazon Translate request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
-		$data = json_decode((string) $response->getBody(), true);
-		if (!is_array($data)) {
+		$decodedBody = json_decode((string) $response->getBody(), true);
+		$data = $this->normalizeJsonArray($decodedBody);
+		if ([] === $data) {
 			throw new rex_exception('Amazon Translate returned an invalid JSON response.');
 		}
 
 		if (isset($data['__type']) || isset($data['message'])) {
-			$message = trim((string) ($data['message'] ?? $data['Message'] ?? 'Amazon Translate returned an error response.'));
+			$message = trim($this->normalizeString($data['message'] ?? $data['Message'] ?? 'Amazon Translate returned an error response.'));
 			throw new rex_exception('Amazon Translate request failed: ' . $message);
 		}
 
 		return $data;
 	}
 
+	/**
+	 * @param array<string, mixed> $config
+	 * @return array<string, string>
+	 */
 	private function buildSignedHeaders(string $method, string $url, string $payload, array $config): array
 	{
 		$timestamp = gmdate('Ymd\\THis\\Z');
@@ -244,11 +317,18 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 			ksort($queryParams);
 			$queryItems = [];
 			foreach ($queryParams as $key => $value) {
-				$queryItems[] = rawurlencode((string) $key) . '=' . rawurlencode((string) $value);
+				$normalizedValue = is_array($value)
+					? implode(',', array_map(fn(mixed $item): string => $this->normalizeString($item), $value))
+					: $this->normalizeString($value);
+				$queryItems[] = rawurlencode($this->normalizeString($key)) . '=' . rawurlencode($normalizedValue);
 			}
 			$queryString = implode('&', $queryItems);
 		}
 
+		$accessKey = trim($this->normalizeString($config['accessKey'] ?? null));
+		$secretKey = trim($this->normalizeString($config['secretKey'] ?? null));
+		$region = trim($this->normalizeString($config['region'] ?? null));
+		$sessionToken = trim($this->normalizeString($config['sessionToken'] ?? null));
 		$headers = [
 			'content-type' => 'application/x-amz-json-1.1',
 			'host' => $host,
@@ -256,8 +336,8 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 			'x-amz-date' => $timestamp,
 			'x-amz-target' => self::TARGET,
 		];
-		if ('' !== $config['sessionToken']) {
-			$headers['x-amz-security-token'] = $config['sessionToken'];
+		if ('' !== $sessionToken) {
+			$headers['x-amz-security-token'] = $sessionToken;
 		}
 
 		ksort($headers);
@@ -277,7 +357,7 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 			$payloadHash,
 		]);
 
-		$scope = $date . '/' . $config['region'] . '/' . self::SERVICE . '/aws4_request';
+		$scope = $date . '/' . $region . '/' . self::SERVICE . '/aws4_request';
 		$stringToSign = implode("\n", [
 			'AWS4-HMAC-SHA256',
 			$timestamp,
@@ -285,14 +365,14 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 			hash('sha256', $canonicalRequest),
 		]);
 
-		$kDate = hash_hmac('sha256', $date, 'AWS4' . $config['secretKey'], true);
-		$kRegion = hash_hmac('sha256', $config['region'], $kDate, true);
+		$kDate = hash_hmac('sha256', $date, 'AWS4' . $secretKey, true);
+		$kRegion = hash_hmac('sha256', $region, $kDate, true);
 		$kService = hash_hmac('sha256', self::SERVICE, $kRegion, true);
 		$kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
 		$signature = hash_hmac('sha256', $stringToSign, $kSigning);
 
 		$authorization = 'AWS4-HMAC-SHA256 '
-			. 'Credential=' . $config['accessKey'] . '/' . $scope . ', '
+			. 'Credential=' . $accessKey . '/' . $scope . ', '
 			. 'SignedHeaders=' . $signedHeaders . ', '
 			. 'Signature=' . $signature;
 
@@ -329,11 +409,31 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		return implode('-', $normalizedParts);
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeJsonArray(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
+	}
+
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return $this->lastDebugData;
 	}
 
+	/**
+	 * @param array<string, mixed> $transaction
+	 * @return array<string, mixed>
+	 */
 	private function buildDebugData(array $transaction): array
 	{
 		/** @var \Psr\Http\Message\RequestInterface $req */
@@ -354,12 +454,12 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 				'method' => $req->getMethod(),
 				'uri' => (string) $req->getUri(),
 				'headers' => $requestHeaders,
-				'body' => json_decode((string) $req->getBody(), true),
+				'body' => $this->normalizeJsonArray(json_decode((string) $req->getBody(), true)),
 			],
 			'response' => null !== $res ? [
 				'status' => $res->getStatusCode(),
 				'headers' => $res->getHeaders(),
-				'body' => json_decode((string) $res->getBody(), true),
+				'body' => $this->normalizeJsonArray(json_decode((string) $res->getBody(), true)),
 			] : null,
 		];
 	}
@@ -369,6 +469,7 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		return 'Amazon Translate';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['amazon-translate-v2'];
@@ -386,16 +487,17 @@ class VTransAmazonTranslateProvider implements VTransProviderInterface
 		];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		$errors = [];
-		if (empty(trim((string) ($values['region'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['region'] ?? null)))) {
 			$errors['region'] = 'AWS Region is required.';
 		}
-		if (empty(trim((string) ($values['accessKey'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['accessKey'] ?? null)))) {
 			$errors['accessKey'] = 'Access Key is required.';
 		}
-		if (empty(trim((string) ($values['secretKey'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['secretKey'] ?? null)))) {
 			$errors['secretKey'] = 'Secret Key is required.';
 		}
 		return $errors;

@@ -9,8 +9,16 @@ interface VTransProviderInterface
 {
 	public function supports(string $api): bool;
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult;
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
 	public function getUsage(array $modelData): array;
 
 	/** @return array<string, string> Map of lang code => label (include 'auto' for auto-detect) */
@@ -26,6 +34,7 @@ interface VTransProviderInterface
 	public function getProviderLabel(): string;
 
 	/** API identifier(s) this provider supports. */
+	/** @return list<string> */
 	public function getApiIdentifiers(): array;
 
 	/**
@@ -42,7 +51,7 @@ interface VTransProviderInterface
 	/**
 	 * Validate connection configuration values for this provider.
 	 *
-	 * @param array $values Field values to validate
+	 * @param array<string, mixed> $values Field values to validate
 	 * @return array<string, string> Map of field name => error message (empty if valid)
 	 */
 	public function validateConfig(array $values): array;
@@ -52,6 +61,8 @@ interface VTransProviderInterface
 	 *
 	 * Always populated (request at minimum), even when the call fails.
 	 * Empty array if no HTTP request was made (e.g. FakeLocal provider).
+	 *
+	 * @return array<string, mixed>
 	 */
 	public function getLastDebugData(): array;
 }

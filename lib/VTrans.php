@@ -41,11 +41,17 @@ class VTrans
 	 */
 	public const GLOBAL_TIMEOUT = 60;
 
+	/** @var list<VTransProviderInterface>|null */
 	private static ?array $providers = null;
 	private static int $lastEntryId = 0;
+	/** @var array<string, mixed> */
 	private static array $lastResultMeta = [];
+	/** @var array<string, mixed> */
 	private static array $lastResultData = [];
 
+	/**
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public static function translate(string $text = '', ?string $srcLang = null, string $targetLang = 'en', string $format = 'text', ?string $key = null, array $requestOptions = []): string|false
 	{
 		// Delegate HTML format to translateHtml() for automatic chunk handling.
@@ -65,29 +71,31 @@ class VTrans
 			return false;
 		}
 
-		$connectionKey = $requestOptions['connection'] ?? $requestOptions['agent'] ?? $requestOptions['model'] ?? null;
-		$connectionData = self::resolveConnection(null !== $connectionKey && '' !== (string) $connectionKey ? (string) $connectionKey : null);
-		$connectionMaxChars = isset($connectionData['config']['maxChars']) && (int) $connectionData['config']['maxChars'] > 0
-			? (int) $connectionData['config']['maxChars']
+		$connectionKey = self::normalizeStringValue($requestOptions['connection'] ?? $requestOptions['agent'] ?? $requestOptions['model'] ?? null);
+		$connectionData = self::resolveConnection('' !== $connectionKey ? $connectionKey : null);
+		$connectionConfig = self::normalizeArrayValue($connectionData['config'] ?? null);
+		$connectionMaxCharsValue = self::normalizeStringValue($connectionConfig['maxChars'] ?? null);
+		$connectionMaxChars = '' !== $connectionMaxCharsValue && is_numeric($connectionMaxCharsValue) && (int) $connectionMaxCharsValue > 0
+			? (int) $connectionMaxCharsValue
 			: self::GLOBAL_MAX_CHARS;
-		$connectionDebugEnabled = self::normalizeDebugOption($connectionData['config']['debug'] ?? false, false);
+		$connectionDebugEnabled = self::normalizeDebugOption($connectionConfig['debug'] ?? false, false);
 		$requestDebugProvided = array_key_exists('debug', $requestOptions);
 		$debugEnabled = $requestDebugProvided
 			? self::normalizeDebugOption($requestOptions['debug'], $connectionDebugEnabled)
 			: $connectionDebugEnabled;
 		$requestOptions['debug'] = $debugEnabled;
-		$api = (string) $connectionData['config']['api'];
+		$api = self::normalizeStringValue($connectionConfig['api'] ?? '');
 		$supportsPromptOptions = self::apiSupportsPromptOptions($api);
 		$entryKey = self::normalizeEntryKey($key);
 		$srcLang = self::normalizeLanguage($srcLang);
 		$targetLang = self::normalizeLanguage($targetLang);
 		if (null === $targetLang) {
-			$targetLang = self::normalizeLanguage(self::getDefaultTargetLanguage((string) $connectionData['key']));
+			$targetLang = self::normalizeLanguage(self::getDefaultTargetLanguage(self::normalizeStringValue($connectionData['key'] ?? null)));
 		}
 		$targetLang = self::normalizeTargetLanguage($targetLang, $api);
 		$format = self::normalizeFormat($format);
 
-		$requestContext = $supportsPromptOptions ? trim((string) ($requestOptions['context'] ?? '')) : '';
+		$requestContext = $supportsPromptOptions ? trim(self::normalizeStringValue($requestOptions['context'] ?? '')) : '';
 		$customInstructions = $supportsPromptOptions ? self::normalizeCustomInstructions($requestOptions['customInstructions'] ?? []) : [];
 		$requestOptions['customInstructions'] = $customInstructions;
 		$requestOptions['context'] = $requestContext;
@@ -96,7 +104,7 @@ class VTrans
 		$requestOptions['cacheMode'] = $cacheEnabled ? 'default' : 'no-cache';
 		$contentLength = strlen($text);
 
-		$promptContext = $supportsPromptOptions ? self::buildPromptContext($connectionData['config'], $requestContext) : '';
+		$promptContext = $supportsPromptOptions ? self::buildPromptContext($connectionConfig, $requestContext) : '';
 		$hash = self::buildTranslationHash($text, $promptContext, $customInstructions);
 
 		if (null === $targetLang) {
@@ -114,18 +122,19 @@ class VTrans
 		if (!$cacheEnabled) {
 			$payloadLength = mb_strlen($providerText);
 			$pendingData = self::buildPendingData(
-				$api, (string) $connectionData['key'], $srcLang, $targetLang, $format,
-				$debugEnabled, (int) ($connectionData['config']['timeout'] ?? self::GLOBAL_TIMEOUT),
-				trim((string) ($connectionData['config']['apiUrl'] ?? '')),
+				$api, self::normalizeStringValue($connectionData['key'] ?? null), $srcLang, $targetLang, $format,
+				$debugEnabled, self::normalizeIntValue($connectionConfig['timeout'] ?? null, self::GLOBAL_TIMEOUT),
+				trim(self::normalizeStringValue($connectionConfig['apiUrl'] ?? '')),
 				$promptContext, $customInstructions,
 			);
 			// When a key is provided, look up any existing row so storePendingEntry
 			// can UPDATE it instead of INSERTing (avoids duplicate-key violation).
-			$existingNoCacheId = null !== $entryKey
-				? (self::findEntryByKey($entryKey, (string) $connectionData['key'], $targetLang)['id'] ?? null)
+			$existingNoCacheEntry = null !== $entryKey
+				? self::findEntryByKey($entryKey, self::normalizeStringValue($connectionData['key'] ?? null), $targetLang)
 				: null;
+			$existingNoCacheId = null !== $existingNoCacheEntry ? self::normalizeIntValue($existingNoCacheEntry['id'] ?? 0, 0) : null;
 			$pendingId = self::storePendingEntry(
-				$api, (string) $connectionData['key'], $hash, $text, $requestContext, $customInstructions,
+				$api, self::normalizeStringValue($connectionData['key'] ?? null), $hash, $text, $requestContext, $customInstructions,
 				$srcLang, $targetLang, $format, $pendingData, $entryKey, $existingNoCacheId, $payloadLength
 			);
 			self::$lastEntryId = $pendingId;
@@ -147,7 +156,7 @@ class VTrans
 				self::setLastResultMeta(
 					$pendingId,
 					false,
-					(string) $connectionData['key'],
+					self::normalizeStringValue($connectionData['key'] ?? null),
 					$api,
 					$entryKey,
 					[
@@ -162,7 +171,7 @@ class VTrans
 						'cacheMode' => 'no-cache',
 					]
 				);
-				self::setLastResultData($result->getData());
+				self::setLastResultData(self::normalizeResultData($result->getData()));
 
 				return $translation;
 			} catch (Throwable $e) {
@@ -183,13 +192,15 @@ class VTrans
 
 		$existingEntry = null;
 		if (null !== $entryKey) {
-			$existingEntry = self::findEntryByKey($entryKey, (string) $connectionData['key'], $targetLang);
+			$existingEntry = self::findEntryByKey($entryKey, self::normalizeStringValue($connectionData['key'] ?? null), $targetLang);
 			// Only treat as cache hit if the entry has a completed translation.
-			if (null !== $existingEntry && $hash === (string) $existingEntry['hash'] && null !== $existingEntry['translation'] && '' !== (string) $existingEntry['translation']) {
+			$existingEntryHash = self::normalizeStringValue($existingEntry['hash'] ?? null);
+			$existingEntryTranslation = $existingEntry['translation'] ?? null;
+			if (null !== $existingEntry && $hash === $existingEntryHash && null !== $existingEntryTranslation && '' !== self::normalizeStringValue($existingEntryTranslation)) {
 				self::setLastResultMeta(
-					(int) $existingEntry['id'],
+					self::normalizeIntValue($existingEntry['id'] ?? 0, 0),
 					true,
-					(string) $connectionData['key'],
+					self::normalizeStringValue($connectionData['key'] ?? null),
 					$api,
 					$entryKey,
 					[
@@ -200,12 +211,12 @@ class VTrans
 						'format' => $format,
 						'contentLength' => $contentLength,
 						'promptOptionsUsed' => $supportsPromptOptions && ('' !== $requestContext || [] !== $customInstructions),
-						'durationMs' => (int) ($existingEntry['duration_ms'] ?? 0),
+						'durationMs' => self::normalizeIntValue($existingEntry['duration_ms'] ?? 0, 0),
 					]
 				);
-				self::setLastResultData((array) ($existingEntry['data'] ?? []));
+				self::setLastResultData(self::normalizeResultData($existingEntry['data'] ?? []));
 
-				return (string) $existingEntry['translation'];
+				return self::normalizeStringValue($existingEntry['translation'] ?? null);
 			}
 		}
 
@@ -213,16 +224,16 @@ class VTrans
 		$cachedTranslation = self::findCachedTranslation(
 			$hash,
 			$api,
-			(string) $connectionData['key'],
+			self::normalizeStringValue($connectionData['key'] ?? null),
 			$srcLang,
 			$targetLang,
 			$format
 		);
 		if (null !== $cachedTranslation && null === $entryKey) {
 			self::setLastResultMeta(
-				(int) $cachedTranslation['id'],
+				self::normalizeIntValue($cachedTranslation['id'] ?? 0, 0),
 				true,
-				(string) $connectionData['key'],
+				self::normalizeStringValue($connectionData['key'] ?? null),
 				$api,
 				null,
 				[
@@ -232,18 +243,18 @@ class VTrans
 					'format' => $format,
 					'contentLength' => $contentLength,
 					'promptOptionsUsed' => $supportsPromptOptions && ('' !== $requestContext || [] !== $customInstructions),
-					'durationMs' => (int) ($cachedTranslation['duration_ms'] ?? 0),
+					'durationMs' => self::normalizeIntValue($cachedTranslation['duration_ms'] ?? 0, 0),
 				]
 			);
-			self::setLastResultData((array) ($cachedTranslation['data'] ?? []));
+			self::setLastResultData(self::normalizeResultData($cachedTranslation['data'] ?? []));
 
-			return (string) $cachedTranslation['translation'];
+			return self::normalizeStringValue($cachedTranslation['translation'] ?? null);
 		}
 
 		if (null !== $cachedTranslation && null !== $entryKey) {
 			$insertId = self::storeTranslation(
 				$api,
-				(string) $connectionData['key'],
+				self::normalizeStringValue($connectionData['key'] ?? null),
 				$hash,
 				$text,
 				$requestContext,
@@ -251,18 +262,18 @@ class VTrans
 				$srcLang,
 				$targetLang,
 				$format,
-				(string) $cachedTranslation['translation'],
-				(int) ($cachedTranslation['duration_ms'] ?? 0),
-				(array) ($cachedTranslation['data'] ?? []),
+				self::normalizeStringValue($cachedTranslation['translation'] ?? null),
+				self::normalizeIntValue($cachedTranslation['duration_ms'] ?? 0, 0),
+				self::normalizeResultData($cachedTranslation['data'] ?? []),
 				$entryKey,
-				null !== $existingEntry ? (int) $existingEntry['id'] : null,
+				null !== $existingEntry ? self::normalizeIntValue($existingEntry['id'] ?? 0, 0) : null,
 				0 // cache hit — no payload sent to provider
 			);
 
 			self::setLastResultMeta(
 				$insertId,
 				true,
-				(string) $connectionData['key'],
+				self::normalizeStringValue($connectionData['key'] ?? null),
 				$api,
 				$entryKey,
 				[
@@ -272,26 +283,26 @@ class VTrans
 					'format' => $format,
 					'contentLength' => $contentLength,
 					'promptOptionsUsed' => $supportsPromptOptions && ('' !== $requestContext || [] !== $customInstructions),
-					'durationMs' => (int) ($cachedTranslation['duration_ms'] ?? 0),
-					'cachedId' => (int) $cachedTranslation['id'],
+					'durationMs' => self::normalizeIntValue($cachedTranslation['duration_ms'] ?? 0, 0),
+					'cachedId' => self::normalizeIntValue($cachedTranslation['id'] ?? 0, 0),
 				]
 			);
-			self::setLastResultData((array) ($cachedTranslation['data'] ?? []));
+			self::setLastResultData(self::normalizeResultData($cachedTranslation['data'] ?? []));
 
-			return (string) $cachedTranslation['translation'];
+			return self::normalizeStringValue($cachedTranslation['translation'] ?? null);
 		}
 
 		// Create pending DB entry before sending to the provider.
 		$payloadLength = mb_strlen($providerText);
 		$pendingData = self::buildPendingData(
-			$api, (string) $connectionData['key'], $srcLang, $targetLang, $format,
-			$debugEnabled, (int) ($connectionData['config']['timeout'] ?? self::GLOBAL_TIMEOUT),
-			trim((string) ($connectionData['config']['apiUrl'] ?? '')),
+			$api, self::normalizeStringValue($connectionData['key'] ?? null), $srcLang, $targetLang, $format,
+			$debugEnabled, self::normalizeIntValue($connectionConfig['timeout'] ?? null, self::GLOBAL_TIMEOUT),
+			trim(self::normalizeStringValue($connectionConfig['apiUrl'] ?? '')),
 			$promptContext, $customInstructions,
 		);
-		$pendingExistingId = null !== $existingEntry ? (int) $existingEntry['id'] : null;
+		$pendingExistingId = null !== $existingEntry ? self::normalizeIntValue($existingEntry['id'] ?? 0, 0) : null;
 		$pendingId = self::storePendingEntry(
-			$api, (string) $connectionData['key'], $hash, $text, $requestContext, $customInstructions,
+			$api, self::normalizeStringValue($connectionData['key'] ?? null), $hash, $text, $requestContext, $customInstructions,
 			$srcLang, $targetLang, $format, $pendingData, $entryKey, $pendingExistingId, $payloadLength
 		);
 		self::$lastEntryId = $pendingId;
@@ -313,7 +324,7 @@ class VTrans
 			self::setLastResultMeta(
 				$pendingId,
 				false,
-				(string) $connectionData['key'],
+				self::normalizeStringValue($connectionData['key'] ?? null),
 				$api,
 				$entryKey,
 				[
@@ -326,7 +337,7 @@ class VTrans
 					'durationMs' => $durationMs,
 				]
 			);
-			self::setLastResultData($result->getData());
+			self::setLastResultData(self::normalizeResultData($result->getData()));
 
 			return $translatedText;
 		} catch (Throwable $e) {
@@ -368,6 +379,9 @@ class VTrans
 	 * @param string|null $shellKey       VTrans cache key for the shell (surrounding HTML). Optional.
 	 * @param array       $requestOptions Same options as {@see translate()}.
 	 */
+	/**
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public static function translateHtml(
 		string $html,
 		?string $srcLang,
@@ -391,7 +405,7 @@ class VTrans
 		// Only call translate() for the shell when it contains actual content beyond
 		// chunk placeholders — avoids unnecessary API calls for placeholder-only shells.
 		$shellWithoutPlaceholders = preg_replace('/<vtrans-chunk\b[^>]*\/>/i', '', $shellHtml);
-		if ('' !== trim(strip_tags($shellWithoutPlaceholders))) {
+		if ('' !== trim((string) strip_tags((string) $shellWithoutPlaceholders))) {
 			$translatedShell = self::translate($shellHtml, $srcLang, $targetLang, 'html', $shellKey, array_merge($requestOptions, ['_skipChunking' => true]));
 			$translatedShell = false !== $translatedShell ? $translatedShell : $shellHtml;
 		} else {
@@ -409,11 +423,13 @@ class VTrans
 		return '' !== $result ? $result : false;
 	}
 
+	/** @return array<string, mixed> */
 	public static function getLastResultMeta(): array
 	{
 		return self::$lastResultMeta;
 	}
 
+	/** @return array<string, mixed> */
 	public static function getLastResultData(): array
 	{
 		return self::$lastResultData;
@@ -428,11 +444,46 @@ class VTrans
 		return self::$lastEntryId;
 	}
 
+	/** @param array<string, mixed> $data */
 	private static function setLastResultData(array $data): void
 	{
 		self::$lastResultData = $data;
 	}
 
+	/** @return array<string, mixed> */
+	private static function normalizeResultData(mixed $data): array
+	{
+		if (!is_array($data)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($data as $key => $value) {
+			$normalized[(is_string($key) ? $key : (string) $key)] = self::normalizeResultValue($value);
+		}
+
+		return $normalized;
+	}
+
+	/** @return mixed */
+	private static function normalizeResultValue(mixed $value): mixed
+	{
+		if (is_array($value)) {
+			$normalized = [];
+			foreach ($value as $key => $item) {
+				$normalized[(is_string($key) ? $key : (string) $key)] = self::normalizeResultValue($item);
+			}
+			return $normalized;
+		}
+
+		if (is_object($value)) {
+			return null;
+		}
+
+		return $value;
+	}
+
+	/** @param array<string, mixed> $extra */
 	private static function setLastResultMeta(int $id, bool $cached, string $connectionKey, string $api, ?string $entryKey, array $extra = []): void
 	{
 		self::$lastResultMeta = array_merge([
@@ -453,6 +504,7 @@ class VTrans
 		], $extra);
 	}
 
+	/** @return array<string, mixed>|null */
 	private static function findEntryByKey(string $entryKey, string $connectionKey, string $targetLang): ?array
 	{
 		$sql = rex_sql::factory();
@@ -474,10 +526,12 @@ class VTrans
 		];
 	}
 
+	/** @return array<string, mixed> */
 	public static function getUsage(?string $connectionKey = null): array
 	{
 		$connectionData = self::resolveConnection(self::trimOrNull($connectionKey));
-		$provider = self::getProvider((string) $connectionData['config']['api']);
+		$connectionConfig = is_array($connectionData['config'] ?? null) ? $connectionData['config'] : [];
+		$provider = self::getProvider(self::normalizeStringValue($connectionConfig['api'] ?? ''));
 
 		return $provider->getUsage($connectionData);
 	}
@@ -490,7 +544,8 @@ class VTrans
 			return true;
 		}
 
-		return self::apiSupportsPromptOptions((string) $connectionData['config']['api']);
+		$connectionConfig = is_array($connectionData['config'] ?? null) ? $connectionData['config'] : [];
+		return self::apiSupportsPromptOptions(self::normalizeStringValue($connectionConfig['api'] ?? ''));
 	}
 
 	/** @deprecated Use connectionSupportsPromptOptions() instead. */
@@ -504,7 +559,8 @@ class VTrans
 	{
 		try {
 			$connectionData = self::resolveConnection(self::trimOrNull($connectionKey));
-			$provider = self::getProvider((string) $connectionData['config']['api']);
+			$connectionConfig = is_array($connectionData['config'] ?? null) ? $connectionData['config'] : [];
+			$provider = self::getProvider(self::normalizeStringValue($connectionConfig['api'] ?? ''));
 			return $provider->getAvailableSourceLanguages();
 		} catch (Throwable) {
 			return ['auto' => 'Automatic'];
@@ -516,7 +572,8 @@ class VTrans
 	{
 		try {
 			$connectionData = self::resolveConnection(self::trimOrNull($connectionKey));
-			$provider = self::getProvider((string) $connectionData['config']['api']);
+			$connectionConfig = is_array($connectionData['config'] ?? null) ? $connectionData['config'] : [];
+			$provider = self::getProvider(self::normalizeStringValue($connectionConfig['api'] ?? ''));
 			return $provider->getAvailableTargetLanguages();
 		} catch (Throwable) {
 			return [];
@@ -527,7 +584,8 @@ class VTrans
 	{
 		try {
 			$connectionData = self::resolveConnection(self::trimOrNull($connectionKey));
-			$provider = self::getProvider((string) $connectionData['config']['api']);
+			$connectionConfig = is_array($connectionData['config'] ?? null) ? $connectionData['config'] : [];
+			$provider = self::getProvider(self::normalizeStringValue($connectionConfig['api'] ?? ''));
 			$defaultLang = strtolower(trim($provider->getDefaultTargetLanguage()));
 			$available = $provider->getAvailableTargetLanguages();
 			if ('' !== $defaultLang && ([] === $available || array_key_exists($defaultLang, $available))) {
@@ -614,6 +672,8 @@ class VTrans
 	/**
 	 * Resolve a connection by key from the database.
 	 * If no key given, the default connection (lowest prio, active) is used.
+	 *
+	 * @return array<string, mixed>
 	 */
 	private static function resolveConnection(?string $connectionKey): array
 	{
@@ -675,6 +735,7 @@ class VTrans
 	}
 
 	/** Get all available providers mapped by their first API identifier. */
+	/** @return array<string, VTransProviderInterface> */
 	public static function getAvailableProviders(): array
 	{
 		$map = [];
@@ -686,6 +747,7 @@ class VTrans
 		return $map;
 	}
 
+	/** @return array<string, mixed>|null */
 	private static function findCachedTranslation(string $hash, string $api, string $connectionKey, ?string $srcLang, string $targetLang, string $format): ?array
 	{
 		$params = [$hash, $api, $connectionKey];
@@ -718,11 +780,15 @@ class VTrans
 		];
 	}
 
+	/**
+	 * @param list<string> $customInstructions
+	 * @param array<string, mixed> $data
+	 */
 	private static function storeTranslation(string $api, string $connectionKey, string $hash, string $text, string $prompt, array $customInstructions, ?string $srcLang, string $targetLang, string $format, string $translation, int $durationMs, array $data, ?string $entryKey = null, ?int $existingId = null, int $payloadLength = 0): int
 	{
 		$table = rex::getTable('vtrans');
 		$customInstructionsJson = [] !== $customInstructions
-			? json_encode(array_values($customInstructions), self::JSON_FLAGS)
+			? json_encode($customInstructions, self::JSON_FLAGS)
 			: null;
 		$dataJson = json_encode($data, self::JSON_FLAGS);
 
@@ -775,6 +841,7 @@ class VTrans
 		return (int) $sql->getLastId();
 	}
 
+	/** @return array<string, mixed> */
 	private static function decodeStoredData(string $data): array
 	{
 		$data = trim($data);
@@ -782,7 +849,45 @@ class VTrans
 			return [];
 		}
 
-		return json_decode($data, true) ?: [];
+		$decodedData = json_decode($data, true);
+		return self::normalizeArrayValue($decodedData);
+	}
+
+	/** @return array<string, mixed> */
+	private static function normalizeArrayValue(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
+	}
+
+	private static function normalizeStringValue(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private static function normalizeIntValue(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
 	}
 
 	private static function normalizeEntryKey(?string $entryKey): ?string
@@ -829,15 +934,19 @@ class VTrans
 		};
 	}
 
-	private static function normalizeCustomInstructions(string|array $instructions): array
+	/**
+	 * @param mixed $instructions
+	 * @return list<string>
+	 */
+	private static function normalizeCustomInstructions(mixed $instructions): array
 	{
 		if (is_string($instructions)) {
 			$instructions = preg_split('/\r\n|\r|\n/', $instructions) ?: [];
 		}
 
 		$normalized = [];
-		foreach ($instructions as $instruction) {
-			$instruction = trim((string) $instruction);
+		foreach ((array) $instructions as $instruction) {
+			$instruction = trim(self::normalizeStringValue($instruction));
 			if ('' !== $instruction) {
 				$normalized[] = $instruction;
 			}
@@ -860,13 +969,14 @@ class VTrans
 			return 0 !== (int) $value;
 		}
 
-		return match (strtolower(trim((string) $value))) {
+		return match (strtolower(trim(self::normalizeStringValue($value)))) {
 			'1', 'true', 'yes', 'on' => true,
 			'0', 'false', 'no', 'off' => false,
 			default => $default,
 		};
 	}
 
+	/** @param array<string, mixed> $requestOptions */
 	private static function normalizeCacheEnabled(array $requestOptions): bool
 	{
 		if (array_key_exists('cache', $requestOptions)) {
@@ -890,7 +1000,7 @@ class VTrans
 			return 0 !== (int) $value;
 		}
 
-		return match (strtolower(trim((string) $value))) {
+		return match (strtolower(trim(self::normalizeStringValue($value)))) {
 			'1', 'true', 'yes', 'on' => true,
 			'0', 'false', 'no', 'off' => false,
 			default => $default,
@@ -899,7 +1009,7 @@ class VTrans
 
 	private static function normalizeCacheMode(mixed $value): string
 	{
-		$normalized = strtolower(trim((string) $value));
+		$normalized = strtolower(trim(self::normalizeStringValue($value)));
 
 		return match ($normalized) {
 			'no-cache', 'nocache', 'none', 'off' => 'no-cache',
@@ -929,11 +1039,12 @@ class VTrans
 		return in_array($api, ['deepl-v2', 'deepl-api-free-v2', 'deepl-api-pro-v2', 'openai'], true);
 	}
 
+	/** @param array<string, mixed> $config */
 	private static function buildPromptContext(array $config, string $prompt): string
 	{
 		$parts = [];
 
-		$systemPrompt = trim((string) ($config['systemPrompt'] ?? ''));
+		$systemPrompt = trim(self::normalizeStringValue($config['systemPrompt'] ?? ''));
 		if ('' !== $systemPrompt) {
 			$parts[] = $systemPrompt;
 		}
@@ -946,6 +1057,7 @@ class VTrans
 		return implode("\n\n", $parts);
 	}
 
+	/** @param list<string> $customInstructions */
 	private static function buildTranslationHash(string $text, string $promptContext, array $customInstructions): string
 	{
 		return md5($text . "\n" . $promptContext . "\n" . implode('|', $customInstructions));
@@ -956,6 +1068,10 @@ class VTrans
 	 *
 	 * Stores all available context so that incomplete/error entries already
 	 * contain the same metadata that a successful debug-mode response would.
+	 */
+	/**
+	 * @param list<string> $customInstructions
+	 * @return array<string, mixed>
 	 */
 	private static function buildPendingData(
 		string $api,
@@ -994,6 +1110,10 @@ class VTrans
 	 * Insert or update a pending entry before the provider API call.
 	 * Translation and duration_ms are set to NULL.
 	 */
+	/**
+	 * @param list<string> $customInstructions
+	 * @param array<string, mixed> $pendingData
+	 */
 	private static function storePendingEntry(
 		string $api,
 		string $connectionKey,
@@ -1011,7 +1131,7 @@ class VTrans
 	): int {
 		$table = rex::getTable('vtrans');
 		$customInstructionsJson = [] !== $customInstructions
-			? json_encode(array_values($customInstructions), self::JSON_FLAGS)
+			? json_encode($customInstructions, self::JSON_FLAGS)
 			: null;
 		$dataJson = json_encode($pendingData, self::JSON_FLAGS);
 
@@ -1064,6 +1184,7 @@ class VTrans
 	/**
 	 * Update a pending entry after a successful provider response.
 	 */
+	/** @param array<string, mixed> $data */
 	private static function completeEntry(int $entryId, string $translation, int $durationMs, array $data, int $payloadLength = 0): void
 	{
 		$table = rex::getTable('vtrans');
@@ -1088,6 +1209,7 @@ class VTrans
 	 * Reads the existing data column and merges the error information into it
 	 * so that all pre-request context (stored by storePendingEntry) is preserved.
 	 */
+	/** @param array<string, mixed> $errorInfo */
 	private static function updateEntryError(int $entryId, int $durationMs, array $errorInfo): void
 	{
 		$table = rex::getTable('vtrans');
@@ -1099,7 +1221,7 @@ class VTrans
 
 		$existingData = [];
 		if (!empty($existing[0]['data'])) {
-			$decoded = json_decode($existing[0]['data'], true);
+			$decoded = json_decode((string) $existing[0]['data'], true);
 			if (is_array($decoded)) {
 				$existingData = $decoded;
 			}

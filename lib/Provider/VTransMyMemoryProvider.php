@@ -16,6 +16,7 @@ use rex_exception;
  */
 class VTransMyMemoryProvider implements VTransProviderInterface
 {
+	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 
 	public function supports(string $api): bool
@@ -23,12 +24,16 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		return 'mymemory-v2' === $api;
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
 		$debug = !empty($requestOptions['debug']);
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 		$history = [];
-		$requestUrl = $this->buildRequestUrl($config['apiUrl']);
+		$requestUrl = $this->buildRequestUrl($this->normalizeString($config['apiUrl'] ?? null));
 		$stack = HandlerStack::create();
 		$stack->push(Middleware::history($history));
 		$client = new Client([
@@ -42,8 +47,8 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		$target = $this->normalizeLanguageCode($targetLang);
 
 		$query = [
-			'q' => (string) $text,
-			'langpair' => $source . '|' . $target,
+			'q' => $this->normalizeString($text),
+			'langpair' => $this->normalizeString($source) . '|' . $this->normalizeString($target),
 		];
 
 		if ('' !== $config['apiKey']) {
@@ -57,24 +62,31 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 			$data = $this->sendTranslateRequest($client, $requestUrl, $query);
 		} finally {
 			if (!empty($history)) {
-				$this->lastDebugData = $this->buildDebugData($history[0]);
+				$debugTransaction = $history[0] ?? null;
+				$debugData = [];
+				if (is_array($debugTransaction)) {
+					/** @var array<string, mixed> $debugData */
+					$debugData = $debugTransaction;
+				}
+				$this->lastDebugData = $this->buildDebugData($debugData);
 			}
 		}
-		$translation = (string) ($data['responseData']['translatedText'] ?? '');
+		$responseData = is_array($data['responseData'] ?? null) ? $data['responseData'] : [];
+		$translation = $this->normalizeString($responseData['translatedText'] ?? null);
 
 		if ('' === $translation) {
 			throw new rex_exception('MyMemory returned an empty translation response.');
 		}
 
 		$resultData = [
-			'model' => $modelData['key'],
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
 			'requestUrl' => $requestUrl,
 			'langpair' => $query['langpair'],
 			'source_used' => $source,
-			'source_fallback' => $config['sourceFallback'],
-			'match' => $data['responseData']['match'] ?? null,
+			'source_fallback' => $this->normalizeString($config['sourceFallback'] ?? null),
+			'match' => $responseData['match'] ?? null,
 			'responseStatus' => $data['responseStatus'] ?? null,
 			'responseDetails' => $data['responseDetails'] ?? null,
 			'format' => $format,
@@ -87,15 +99,16 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		return new VTransProviderResult($translation, $resultData);
 	}
 
+	/** @param array<string, mixed> $modelData @return array<string, mixed> */
 	public function getUsage(array $modelData): array
 	{
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 
 		return [
 			'provider' => 'mymemory',
-			'model' => (string) ($modelData['key'] ?? ''),
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
 			'usage_supported' => false,
 			'character' => null,
 		];
@@ -131,14 +144,55 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		return 'en';
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
+	{
+		if (!is_array($config)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
+	}
+
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array<string, mixed>
+	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
-		$api = trim((string) ($modelConfig['api'] ?? ''));
-		$apiUrl = trim((string) ($modelConfig['apiUrl'] ?? 'https://api.mymemory.translated.net/get'));
-		$apiKey = trim((string) ($modelConfig['apiKey'] ?? ''));
-		$email = trim((string) ($modelConfig['email'] ?? ''));
-		$sourceFallback = $this->normalizeLanguageCode((string) ($modelConfig['sourceFallback'] ?? 'en'));
-		$timeout = (int) ($modelConfig['timeout'] ?? 30);
+		$api = trim($this->normalizeString($modelConfig['api'] ?? null));
+		$apiUrl = trim($this->normalizeString($modelConfig['apiUrl'] ?? 'https://api.mymemory.translated.net/get'));
+		$apiKey = trim($this->normalizeString($modelConfig['apiKey'] ?? null));
+		$email = trim($this->normalizeString($modelConfig['email'] ?? null));
+		$sourceFallback = $this->normalizeLanguageCode($this->normalizeString($modelConfig['sourceFallback'] ?? 'en'));
+		$timeout = $this->normalizeInt($modelConfig['timeout'] ?? null, 30);
 		$timeout = max(1, min($timeout, 300));
 
 		if ('' === $apiUrl) {
@@ -165,6 +219,10 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		return $apiUrl . '/get';
 	}
 
+	/**
+	 * @param array<string, mixed> $query
+	 * @return array<string, mixed>
+	 */
 	private function sendTranslateRequest(Client $client, string $requestUrl, array $query): array
 	{
 		try {
@@ -178,12 +236,20 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 			throw new rex_exception('MyMemory request timed out or connection failed. Check apiUrl and timeout.', $e);
 		} catch (GuzzleException $e) {
 			$message = $e->getMessage();
-			if (method_exists($e, 'getResponse') && null !== $e->getResponse()) {
-				$status = $e->getResponse()->getStatusCode();
-				$body = (string) $e->getResponse()->getBody();
+			$response = null;
+			if (method_exists($e, 'getResponse')) {
+				$response = $e->getResponse();
+			}
+			if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+				$status = $response->getStatusCode();
+				$body = (string) $response->getBody();
 				if ('' !== $body) {
 					$decoded = json_decode($body, true);
-					$apiMessage = (string) ($decoded['responseDetails'] ?? $decoded['error'] ?? '');
+					$apiMessage = '';
+					if (is_array($decoded)) {
+						$responseDetails = $decoded['responseDetails'] ?? $decoded['error'] ?? null;
+						$apiMessage = is_string($responseDetails) ? $responseDetails : '';
+					}
 					if ('' !== $apiMessage) {
 						$message = $apiMessage;
 					}
@@ -191,17 +257,18 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 				$message .= ' (HTTP ' . $status . ')';
 			}
 
-			throw new rex_exception('MyMemory request failed: ' . $message, $e);
+			throw new rex_exception('MyMemory request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
-		$data = json_decode((string) $response->getBody(), true);
-		if (!is_array($data)) {
+		$decodedBody = json_decode((string) $response->getBody(), true);
+		$data = $this->normalizeJsonArray($decodedBody);
+		if ([] === $data) {
 			throw new rex_exception('MyMemory returned an invalid JSON response.');
 		}
 
-		$responseStatus = (int) ($data['responseStatus'] ?? 0);
+		$responseStatus = $this->normalizeInt($data['responseStatus'] ?? null, 0);
 		if (200 !== $responseStatus) {
-			$message = trim((string) ($data['responseDetails'] ?? 'MyMemory returned an unexpected response status.'));
+			$message = trim($this->normalizeString($data['responseDetails'] ?? 'MyMemory returned an unexpected response status.'));
 			throw new rex_exception('MyMemory request failed: ' . $message . ' (status ' . $responseStatus . ')');
 		}
 
@@ -220,36 +287,61 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		return $parts[0];
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeJsonArray(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
+	}
+
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return $this->lastDebugData;
 	}
 
+	/**
+	 * @param array<string, mixed> $transaction
+	 * @return array<string, mixed>
+	 */
 	private function buildDebugData(array $transaction): array
 	{
-		/** @var \Psr\Http\Message\RequestInterface $req */
-		$req = $transaction['request'];
-		/** @var \Psr\Http\Message\ResponseInterface|null $res */
+		$req = $transaction['request'] ?? null;
 		$res = $transaction['response'] ?? null;
 
 		$safeBody = [];
-		parse_str((string) $req->getBody(), $safeBody);
+		if ($req instanceof \Psr\Http\Message\RequestInterface) {
+			parse_str((string) $req->getBody(), $safeBody);
+		}
 		if (isset($safeBody['key'])) {
 			$safeBody['key'] = '***';
 		}
 
+		$responseData = null;
+		if ($res instanceof \Psr\Http\Message\ResponseInterface) {
+			$responseData = [
+				'status' => $res->getStatusCode(),
+				'headers' => $res->getHeaders(),
+				'body' => $this->normalizeJsonArray(json_decode((string) $res->getBody(), true)),
+			];
+		}
+
 		return [
-			'request' => [
+			'request' => $req instanceof \Psr\Http\Message\RequestInterface ? [
 				'method' => $req->getMethod(),
 				'uri' => (string) $req->getUri(),
 				'form_params' => $safeBody,
 				'headers' => $req->getHeaders(),
-			],
-			'response' => null !== $res ? [
-				'status' => $res->getStatusCode(),
-				'headers' => $res->getHeaders(),
-				'body' => json_decode((string) $res->getBody(), true),
 			] : null,
+			'response' => $responseData,
 		];
 	}
 
@@ -258,6 +350,7 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		return 'MyMemory';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['mymemory-v2'];
@@ -274,6 +367,7 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 		];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		return [];

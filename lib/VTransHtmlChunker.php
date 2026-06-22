@@ -54,7 +54,14 @@ class VTransHtmlChunker
 			$openTag    = $m[0][0];
 			$tagName    = strtolower($m[1][0]);
 			// Determine key from whichever quote style matched (offset -1 = group not matched).
-			$key        = $m[2][1] !== -1 ? $m[2][0] : ($m[3][1] !== -1 ? $m[3][0] : $m[4][0]);
+			$key        = '';
+			if (isset($m[2]) && -1 !== $m[2][1]) {
+				$key = (string) $m[2][0];
+			} elseif (isset($m[3]) && -1 !== $m[3][1]) {
+				$key = (string) $m[3][0];
+			} elseif (isset($m[4]) && '' !== (string) $m[4][0]) {
+				$key = (string) $m[4][0];
+			}
 			$innerStart = $tagStart + strlen($openTag);
 
 			// Append content between last position and this match unchanged.
@@ -138,7 +145,7 @@ class VTransHtmlChunker
 		$len   = strlen($html);
 		$qtag  = preg_quote($tagName, '/');
 
-		while ($pos < $len && $depth > 0) {
+		while ($pos < $len) {
 			preg_match('/<' . $qtag . '\b[^>]*(?<!\/)>/si', $html, $openM, PREG_OFFSET_CAPTURE, $pos);
 			preg_match('/<\/' . $qtag . '\s*>/si', $html, $closeM, PREG_OFFSET_CAPTURE, $pos);
 

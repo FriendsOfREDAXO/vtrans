@@ -23,6 +23,7 @@ class VTransConnection
 	private int $timeout = 30;
 	private ?int $maxChars = null;
 	private bool $debug = false;
+	/** @var array<string, mixed> */
 	private array $params = [];
 	private bool $isDefault = false;
 	private int $prio = 0;
@@ -32,6 +33,7 @@ class VTransConnection
 	private string $updatedate = '';
 	private string $updateuser = '';
 
+	/** @var list<self>|null */
 	private static ?array $cache = null;
 
 	public static function clearCache(): void
@@ -255,7 +257,9 @@ class VTransConnection
 		self::clearCache();
 	}
 
-	/** Build the config array expected by providers (modelData['config']). */
+	/** Build the config array expected by providers (modelData['config']).
+	 * @return array<string, mixed>
+	 */
 	public function buildProviderConfig(): array
 	{
 		$config = [
@@ -277,7 +281,9 @@ class VTransConnection
 		return $config;
 	}
 
-	/** Build the modelData array expected by VTrans/providers. */
+	/** Build the modelData array expected by VTrans/providers.
+	 * @return array<string, mixed>
+	 */
 	public function toModelData(): array
 	{
 		return [
@@ -298,6 +304,7 @@ class VTransConnection
 	public function getTimeout(): int { return $this->timeout; }
 	public function getMaxChars(): ?int { return $this->maxChars; }
 	public function isDebug(): bool { return $this->debug; }
+	/** @return array<string, mixed> */
 	public function getParams(): array { return $this->params; }
 	public function isDefault(): bool { return $this->isDefault; }
 	public function getPrio(): int { return $this->prio; }
@@ -318,6 +325,7 @@ class VTransConnection
 	public function setTimeout(int $timeout): self { $this->timeout = max(1, $timeout); return $this; }
 	public function setMaxChars(?int $maxChars): self { $this->maxChars = (null !== $maxChars && $maxChars > 0) ? $maxChars : null; return $this; }
 	public function setDebug(bool $debug): self { $this->debug = $debug; return $this; }
+	/** @param array<string, mixed> $params */
 	public function setParams(array $params): self { $this->params = $params; return $this; }
 	public function setDefault(bool $isDefault): self { $this->isDefault = $isDefault; return $this; }
 	public function setPrio(int $prio): self { $this->prio = $prio; return $this; }
@@ -350,10 +358,25 @@ class VTransConnection
 		$paramsRaw = (string) $sql->getValue('params');
 		if ('' !== trim($paramsRaw)) {
 			$decoded = json_decode($paramsRaw, true);
-			$connection->params = is_array($decoded) ? $decoded : [];
+			$connection->params = self::normalizeParams($decoded);
 		}
 
 		return $connection;
+	}
+
+	/** @return array<string, mixed> */
+	private static function normalizeParams(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
 	}
 
 	public static function validateKey(string $key): ?string

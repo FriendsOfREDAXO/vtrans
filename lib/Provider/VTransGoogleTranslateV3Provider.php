@@ -19,6 +19,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 {
 	private const AUTH_SCOPE = 'https://www.googleapis.com/auth/cloud-platform';
 	private const API_URL = 'https://translate.googleapis.com';
+	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 
 	public function supports(string $api): bool
@@ -26,11 +27,15 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		return 'google-translate-v3' === $api;
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
-		$promptContext = (string) ($requestOptions['promptContext'] ?? '');
+		$promptContext = $this->normalizeString($requestOptions['promptContext'] ?? null);
 		$debug = !empty($requestOptions['debug']);
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 		$history = [];
 		$stack = HandlerStack::create();
 		$stack->push(Middleware::history($history));
@@ -39,7 +44,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 			'timeout' => $config['timeout'],
 			'handler' => $stack,
 		]);
-		$accessToken = $this->fetchAccessToken($config['credentialsFile']);
+		$accessToken = $this->fetchAccessToken($this->normalizeString($config['credentialsFile'] ?? null));
 
 		$payload = [
 			'contents' => [(string) $text],
@@ -64,24 +69,32 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 			$responseData = $this->sendTranslateRequest($client, $accessToken, $config, $payload);
 		} finally {
 			if (!empty($history)) {
-				$this->lastDebugData = $this->buildDebugData($history[0]);
+				$debugTransaction = $history[0] ?? null;
+				$debugData = [];
+				if (is_array($debugTransaction)) {
+					/** @var array<string, mixed> $debugData */
+					$debugData = $debugTransaction;
+				}
+				$this->lastDebugData = $this->buildDebugData($debugData);
 			}
 		}
-		$translation = (string) ($responseData['translations'][0]['translatedText'] ?? '');
+		$translations = is_array($responseData['translations'] ?? null) ? $responseData['translations'] : [];
+		$firstTranslation = [] !== $translations && isset($translations[0]) && is_array($translations[0]) ? $translations[0] : [];
+		$translation = $this->normalizeString($firstTranslation['translatedText'] ?? null);
 
 		if ('' === $translation) {
 			throw new rex_exception('Google Translate v3 returned an empty translation response.');
 		}
 
 		$resultData = [
-			'model' => $modelData['key'],
-			'api' => $config['api'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
 			'apiUrl' => self::API_URL,
 			'projectId' => $config['projectId'],
 			'location' => $config['location'],
 			'googleModel' => '' !== $model ? $model : null,
 			'glossaryConfig' => [] !== $config['glossaryConfig'] ? $config['glossaryConfig'] : null,
-			'detected_source_language' => $responseData['translations'][0]['detectedLanguageCode'] ?? null,
+			'detected_source_language' => $firstTranslation['detectedLanguageCode'] ?? null,
 			'format' => $format,
 			'context' => '' !== $promptContext ? $promptContext : null,
 		];
@@ -93,14 +106,18 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		return new VTransProviderResult($translation, $resultData);
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
 	public function getUsage(array $modelData): array
 	{
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 
 		return [
 			'provider' => 'google',
-			'model' => (string) ($modelData['key'] ?? ''),
-			'api' => $config['api'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
 			'apiUrl' => self::API_URL,
 			'usage_supported' => false,
 			'character' => null,
@@ -192,13 +209,54 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		return 'en';
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
+	{
+		if (!is_array($config)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
+	}
+
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array<string, mixed>
+	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
-		$api = trim((string) ($modelConfig['api'] ?? ''));
-		$projectId = trim((string) ($modelConfig['projectId'] ?? ''));
-		$location = trim((string) ($modelConfig['location'] ?? 'global'));
-		$credentialsFile = trim((string) ($modelConfig['credentialsFile'] ?? ''));
-		$googleModel = trim((string) ($modelConfig['googleModel'] ?? ''));
+		$api = trim($this->normalizeString($modelConfig['api'] ?? null));
+		$projectId = trim($this->normalizeString($modelConfig['projectId'] ?? null));
+		$location = trim($this->normalizeString($modelConfig['location'] ?? 'global'));
+		$credentialsFile = trim($this->normalizeString($modelConfig['credentialsFile'] ?? null));
+		$googleModel = trim($this->normalizeString($modelConfig['googleModel'] ?? null));
 		$location = '' !== $location ? $location : 'global';
 
 		if ('' === $credentialsFile) {
@@ -213,7 +271,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		// If projectId was not set explicitly, read project_id directly from the credentials JSON.
 		if ('' === $projectId) {
 			$credentialsJson = $this->readCredentialsJson($credentialsFile);
-			$projectId = trim((string) ($credentialsJson['project_id'] ?? ''));
+			$projectId = trim($this->normalizeString($credentialsJson['project_id'] ?? null));
 		}
 
 		if ('' === $projectId) {
@@ -222,7 +280,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 
 		$glossaryConfig = $this->normalizeGlossaryConfig($modelConfig['glossaryConfig'] ?? [], $projectId, $location);
 
-		$timeout = (int) ($modelConfig['timeout'] ?? 30);
+		$timeout = $this->normalizeInt($modelConfig['timeout'] ?? null, 30);
 		$timeout = max(1, min($timeout, 300));
 
 		return [
@@ -236,6 +294,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		];
 	}
 
+	/** @return array<string, mixed> */
 	private function normalizeGlossaryConfig(mixed $value, string $projectId, string $location): array
 	{
 		if (is_string($value)) {
@@ -253,7 +312,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 			return [];
 		}
 
-		$glossary = trim((string) ($value['glossary'] ?? $value['name'] ?? ''));
+		$glossary = trim($this->normalizeString($value['glossary'] ?? $value['name'] ?? null));
 		if ('' === $glossary) {
 			return [];
 		}
@@ -283,6 +342,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		);
 	}
 
+	/** @return array<string, mixed> */
 	private function readCredentialsJson(string $credentialsFile): array
 	{
 		$content = file_get_contents($credentialsFile);
@@ -290,7 +350,22 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 			return [];
 		}
 
-		return json_decode($content, true) ?: [];
+		return $this->normalizeJsonArray(json_decode($content, true));
+	}
+
+	/** @return array<string, mixed> */
+	private function normalizeJsonArray(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
 	}
 
 	private function resolveCredentialsFile(string $credentialsFile): string
@@ -316,7 +391,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		$credentials = new ServiceAccountCredentials(self::AUTH_SCOPE, $credentialsFile);
 		$tokenData = $credentials->fetchAuthToken();
 
-		$accessToken = (string) ($tokenData['access_token'] ?? '');
+		$accessToken = $this->normalizeString($tokenData['access_token'] ?? null);
 		if ('' === $accessToken) {
 			throw new rex_exception('Could not fetch Google access token from service-account credentials.');
 		}
@@ -324,12 +399,17 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		return $accessToken;
 	}
 
+	/**
+	 * @param array<string, mixed> $config
+	 * @param array<string, mixed> $payload
+	 * @return array<string, mixed>
+	 */
 	private function sendTranslateRequest(Client $client, string $accessToken, array $config, array $payload): array
 	{
 		$path = sprintf(
 			'v3/projects/%s/locations/%s:translateText',
-			rawurlencode($config['projectId']),
-			rawurlencode($config['location'])
+			rawurlencode($this->normalizeString($config['projectId'] ?? null)),
+			rawurlencode($this->normalizeString($config['location'] ?? null))
 		);
 
 		try {
@@ -342,31 +422,42 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 			]);
 		} catch (GuzzleException $e) {
 			$message = $e->getMessage();
-			if (method_exists($e, 'getResponse') && null !== $e->getResponse()) {
-				$body = (string) $e->getResponse()->getBody();
+			$response = null;
+			if (method_exists($e, 'getResponse')) {
+				$response = $e->getResponse();
+			}
+			if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+				$body = (string) $response->getBody();
 				if ('' !== $body) {
 					$decodedBody = json_decode($body, true);
-					$apiMessage = (string) ($decodedBody['error']['message'] ?? '');
+					$apiMessage = '';
+					if (is_array($decodedBody) && isset($decodedBody['error']) && is_array($decodedBody['error'])) {
+						$apiMessage = $this->normalizeString($decodedBody['error']['message'] ?? null);
+					}
 					if ('' !== $apiMessage) {
 						$message = $apiMessage;
 					}
 				}
 			}
 
-			throw new rex_exception('Google Translate v3 request failed: ' . $message, $e);
+			throw new rex_exception('Google Translate v3 request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
-		$data = json_decode((string) $response->getBody(), true);
-		if (!is_array($data)) {
+		$decodedBody = json_decode((string) $response->getBody(), true);
+		$data = $this->normalizeJsonArray($decodedBody);
+		if ([] === $data) {
 			throw new rex_exception('Google Translate v3 returned an invalid JSON response.');
 		}
 
 		return $data;
 	}
 
+	/**
+	 * @param array<string, mixed> $config
+	 */
 	private function buildModelName(array $config): string
 	{
-		$googleModel = trim((string) ($config['googleModel'] ?? ''));
+		$googleModel = trim($this->normalizeString($config['googleModel'] ?? null));
 		if ('' === $googleModel) {
 			return '';
 		}
@@ -377,8 +468,8 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 
 		return sprintf(
 			'projects/%s/locations/%s/models/%s',
-			$config['projectId'],
-			$config['location'],
+			$this->normalizeString($config['projectId'] ?? null),
+			$this->normalizeString($config['location'] ?? null),
 			ltrim($googleModel, '/')
 		);
 	}
@@ -401,11 +492,16 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		));
 	}
 
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return $this->lastDebugData;
 	}
 
+	/**
+	 * @param array<string, mixed> $transaction
+	 * @return array<string, mixed>
+	 */
 	private function buildDebugData(array $transaction): array
 	{
 		/** @var \Psr\Http\Message\RequestInterface $req */
@@ -438,6 +534,7 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		return 'Google Translate v3';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['google-translate-v3'];
@@ -454,10 +551,11 @@ class VTransGoogleTranslateV3Provider implements VTransProviderInterface
 		];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		$errors = [];
-		if (empty(trim((string) ($values['credentialsFile'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['credentialsFile'] ?? null)))) {
 			$errors['credentialsFile'] = 'Credentials file is required.';
 		}
 		return $errors;

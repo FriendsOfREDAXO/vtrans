@@ -15,6 +15,7 @@ use rex_exception;
  */
 class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 {
+	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 
 	public function supports(string $api): bool
@@ -22,15 +23,19 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		return 'google-translate-basic-v2' === $api;
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
 		$debug = !empty($requestOptions['debug']);
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 		$history = [];
 		$stack = HandlerStack::create();
 		$stack->push(Middleware::history($history));
 		$client = new Client([
-			'base_uri' => rtrim($config['apiUrl'], '/') . '/',
+			'base_uri' => rtrim($this->normalizeString($config['apiUrl']), '/') . '/',
 			'timeout' => $config['timeout'],
 			'handler' => $stack,
 		]);
@@ -51,21 +56,29 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 			$data = $this->sendTranslateRequest($client, $query);
 		} finally {
 			if (!empty($history)) {
-				$this->lastDebugData = $this->buildDebugData($history[0]);
+				$debugTransaction = $history[0] ?? null;
+				$debugData = [];
+				if (is_array($debugTransaction)) {
+					/** @var array<string, mixed> $debugData */
+					$debugData = $debugTransaction;
+				}
+				$this->lastDebugData = $this->buildDebugData($debugData);
 			}
 		}
-		$translation = (string) ($data['data']['translations'][0]['translatedText'] ?? '');
+		$translations = is_array($data['data'] ?? null) && is_array($data['data']['translations'] ?? null) ? $data['data']['translations'] : [];
+		$firstTranslation = [] !== $translations && isset($translations[0]) && is_array($translations[0]) ? $translations[0] : [];
+		$translation = $this->normalizeString($firstTranslation['translatedText'] ?? null);
 
 		if ('' === $translation) {
 			throw new rex_exception('Google Translate Basic v2 returned an empty translation response.');
 		}
 
 		$resultData = [
-			'model' => $modelData['key'],
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
-			'detected_source_language' => $data['data']['translations'][0]['detectedSourceLanguage'] ?? null,
-			'provider_model' => $data['data']['translations'][0]['model'] ?? 'nmt',
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
+			'detected_source_language' => $firstTranslation['detectedSourceLanguage'] ?? null,
+			'provider_model' => $firstTranslation['model'] ?? 'nmt',
 			'format' => $format,
 		];
 
@@ -76,15 +89,19 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		return new VTransProviderResult($translation, $resultData);
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
 	public function getUsage(array $modelData): array
 	{
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 
 		return [
 			'provider' => 'google-basic-v2',
-			'model' => (string) ($modelData['key'] ?? ''),
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
 			'usage_supported' => false,
 			'character' => null,
 		];
@@ -175,17 +192,58 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		return 'en';
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
+	{
+		if (!is_array($config)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
+	}
+
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array<string, mixed>
+	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
-		$api = trim((string) ($modelConfig['api'] ?? ''));
-		$apiUrl = trim((string) ($modelConfig['apiUrl'] ?? 'https://translation.googleapis.com/language/translate/v2'));
-		$apiKey = trim((string) ($modelConfig['apiKey'] ?? ''));
+		$api = trim($this->normalizeString($modelConfig['api'] ?? null));
+		$apiUrl = trim($this->normalizeString($modelConfig['apiUrl'] ?? 'https://translation.googleapis.com/language/translate/v2'));
+		$apiKey = trim($this->normalizeString($modelConfig['apiKey'] ?? null));
 
 		if ('' === $apiKey) {
 			throw new rex_exception('Google Translate Basic v2 requires an apiKey in the model configuration.');
 		}
 
-		$timeout = (int) ($modelConfig['timeout'] ?? 30);
+		$timeout = $this->normalizeInt($modelConfig['timeout'] ?? null, 30);
 		$timeout = max(1, min($timeout, 300));
 
 		return [
@@ -196,6 +254,10 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		];
 	}
 
+	/**
+	 * @param array<string, mixed> $query
+	 * @return array<string, mixed>
+	 */
 	private function sendTranslateRequest(Client $client, array $query): array
 	{
 		try {
@@ -203,7 +265,7 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 			$queryParams = [];
 
 			if (isset($bodyParams['key'])) {
-				$queryParams['key'] = (string) $bodyParams['key'];
+				$queryParams['key'] = $this->normalizeString($bodyParams['key']);
 				unset($bodyParams['key']);
 			}
 
@@ -216,22 +278,31 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 			]);
 		} catch (GuzzleException $e) {
 			$message = $e->getMessage();
-			if (method_exists($e, 'getResponse') && null !== $e->getResponse()) {
-				$body = (string) $e->getResponse()->getBody();
+			$response = null;
+			if (method_exists($e, 'getResponse')) {
+				$response = $e->getResponse();
+			}
+			if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+				$body = (string) $response->getBody();
 				if ('' !== $body) {
 					$decodedBody = json_decode($body, true);
-					$apiMessage = (string) ($decodedBody['error']['message'] ?? '');
+					$apiMessage = '';
+					if (is_array($decodedBody) && isset($decodedBody['error'])) {
+						$errorPayload = is_array($decodedBody['error']) ? $decodedBody['error'] : [];
+						$apiMessage = $this->normalizeString($errorPayload['message'] ?? null);
+					}
 					if ('' !== $apiMessage) {
 						$message = $apiMessage;
 					}
 				}
 			}
 
-			throw new rex_exception('Google Translate Basic v2 request failed: ' . $message, $e);
+			throw new rex_exception('Google Translate Basic v2 request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
-		$data = json_decode((string) $response->getBody(), true);
-		if (!is_array($data)) {
+		$decodedBody = json_decode((string) $response->getBody(), true);
+		$data = $this->normalizeJsonArray($decodedBody);
+		if ([] === $data) {
 			throw new rex_exception('Google Translate Basic v2 returned an invalid JSON response.');
 		}
 
@@ -243,11 +314,31 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		return str_replace('_', '-', strtolower(trim($lang)));
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeJsonArray(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
+	}
+
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return $this->lastDebugData;
 	}
 
+	/**
+	 * @param array<string, mixed> $transaction
+	 * @return array<string, mixed>
+	 */
 	private function buildDebugData(array $transaction): array
 	{
 		/** @var \Psr\Http\Message\RequestInterface $req */
@@ -278,7 +369,7 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 			'response' => null !== $res ? [
 				'status' => $res->getStatusCode(),
 				'headers' => $res->getHeaders(),
-				'body' => json_decode((string) $res->getBody(), true),
+				'body' => $this->normalizeJsonArray(json_decode((string) $res->getBody(), true)),
 			] : null,
 		];
 	}
@@ -288,6 +379,7 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		return 'Google Translate Basic v2';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['google-translate-basic-v2'];
@@ -301,10 +393,11 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 		];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		$errors = [];
-		if (empty(trim((string) ($values['api_key'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['api_key'] ?? null)))) {
 			$errors['api_key'] = 'API Key is required.';
 		}
 		return $errors;

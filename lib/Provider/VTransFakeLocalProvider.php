@@ -286,6 +286,10 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		return self::API === $api;
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
 		$format = strtolower(trim($format));
@@ -312,7 +316,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		return new VTransProviderResult($translated, [
 			'provider' => 'fake-local',
 			'api' => self::API,
-			'model' => (string) ($modelData['key'] ?? ''),
+			'model' => $this->normalizeString($modelData['key'] ?? null),
 			'source_language' => $source,
 			'target_language' => $target,
 			'format' => $format,
@@ -320,11 +324,12 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		]);
 	}
 
+	/** @param array<string, mixed> $modelData @return array<string, mixed> */
 	public function getUsage(array $modelData): array
 	{
 		return [
 			'provider' => 'fake-local',
-			'model' => (string) ($modelData['key'] ?? ''),
+			'model' => $this->normalizeString($modelData['key'] ?? null),
 			'api' => self::API,
 			'usage_supported' => false,
 			'character' => null,
@@ -352,6 +357,11 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		return 'en';
 	}
 
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
 	private function translateHtml(string $html, string $source, string $target): string
 	{
 		$dom = new DOMDocument('1.0', 'UTF-8');
@@ -368,13 +378,13 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 
 		$root = null;
 		foreach ($dom->getElementsByTagName('div') as $element) {
-			if ($element instanceof DOMElement && 'vtrans-fake-root' === $element->getAttribute('id')) {
+			if ('vtrans-fake-root' === $element->getAttribute('id')) {
 				$root = $element;
 				break;
 			}
 		}
 
-		if (!$root instanceof DOMElement) {
+		if (null === $root) {
 			return $html;
 		}
 
@@ -469,7 +479,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 	private function fakeTranslate(string $lowerWord, string $target): string
 	{
 		$subs = self::FAKE_SUBS[$target] ?? null;
-		if (null === $subs) {
+		if (!is_array($subs)) {
 			return $lowerWord;
 		}
 
@@ -483,6 +493,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		}
 
 		// No pattern matched — append a language-typical ending to consonant-final words
+		/** @var array<string, list<string>> $endings */
 		static $endings = [
 			'de' => ['en', 'er', 'el', 'ung'],
 			'es' => ['o', 'a', 'ar', 'al'],
@@ -495,6 +506,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 			$lastChar = mb_substr($lowerWord, -1, 1, 'UTF-8');
 			if (!in_array($lastChar, ['a', 'e', 'i', 'o', 'u'], true)) {
 				$idx = mb_strlen($lowerWord, 'UTF-8') % count($langEndings);
+				/** @var list<string> $langEndings */
 				return $lowerWord . $langEndings[$idx];
 			}
 		}
@@ -593,6 +605,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 			: substr($value, $start, $length);
 	}
 
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return [];
@@ -603,6 +616,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		return 'Fake Local (Dev)';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['fake-local-v1'];
@@ -613,6 +627,7 @@ class VTransFakeLocalProvider implements VTransProviderInterface
 		return [];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		return [];

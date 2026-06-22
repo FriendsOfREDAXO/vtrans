@@ -9,6 +9,33 @@ $table = rex::getTable('vtrans');
 $func = rex_get('func', 'string');
 $id = rex_get('id', 'int');
 
+$normalizeString = static function (mixed $value): string {
+    if (is_string($value)) {
+        return $value;
+    }
+
+    if (is_int($value) || is_float($value) || is_bool($value)) {
+        return (string) $value;
+    }
+
+    return '';
+};
+$normalizeInt = static function (mixed $value, int $default = 0): int {
+    if (is_int($value)) {
+        return $value;
+    }
+
+    if (is_float($value)) {
+        return (int) $value;
+    }
+
+    if (is_string($value) && is_numeric($value)) {
+        return (int) $value;
+    }
+
+    return $default;
+};
+
 $truncate = static function (?string $value, int $length = 80): string {
     $value = trim((string) $value);
     if ('' === $value) {
@@ -22,12 +49,13 @@ $truncate = static function (?string $value, int $length = 80): string {
     return mb_substr($value, 0, $length) . '...';
 };
 
-$formatDuration = static function ($durationMs): string {
-    if (null === $durationMs || '' === (string) $durationMs) {
+$formatDuration = static function (mixed $durationMs) use ($normalizeInt, $normalizeString): string {
+    if (null === $durationMs || '' === $normalizeString($durationMs)) {
         return '';
     }
 
-    return number_format(((int) $durationMs) / 1000, 2, '.', '') . 's';
+    $durationInt = $normalizeInt($durationMs, 0);
+    return number_format($durationInt / 1000, 2, '.', '') . 's';
 };
 
 $buildEditUrl = static function (int $entryId): string {
@@ -44,6 +72,23 @@ $buildDeleteUrl = static function (string $deleteBy, string $deleteValue): strin
 
 $buildPlaygroundUrl = static function (array $params = []): string {
     return rex_url::backendPage('vtrans/playground', $params);
+};
+
+$normalizeDisplayData = null;
+$normalizeDisplayData = static function (mixed $value) use (&$normalizeDisplayData): mixed {
+    if (is_array($value)) {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            $normalized[is_string($key) ? $key : (string) $key] = $normalizeDisplayData($item);
+        }
+        return $normalized;
+    }
+
+    if (is_object($value)) {
+        return null;
+    }
+
+    return $value;
 };
 
 $isAdmin = null !== rex::getUser() && rex::getUser()->isAdmin();
@@ -188,7 +233,9 @@ if ('edit' === $func && $id > 0) {
         $customInstructionsRaw = (string) ($row['custom_instructions'] ?? '');
         $decodedCustomInstructions = json_decode($customInstructionsRaw, true);
         if (is_array($decodedCustomInstructions)) {
-            $customInstructionsDisplay = implode("\n", array_filter(array_map('strval', $decodedCustomInstructions), static function (string $line): bool {
+            $customInstructionsDisplay = implode("\n", array_filter(array_map(static function (mixed $line): string {
+                return is_scalar($line) ? (string) $line : '';
+            }, $decodedCustomInstructions), static function (string $line): bool {
                 return '' !== trim($line);
             }));
         } else {
@@ -207,7 +254,7 @@ if ('edit' === $func && $id > 0) {
         $rawData = (string) ($row['data'] ?? '');
         $decodedData = json_decode($rawData, true);
         if (is_array($decodedData)) {
-            $displayData = (string) json_encode($decodedData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $displayData = (string) json_encode($normalizeDisplayData($decodedData), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         } else {
             $displayData = $rawData;
         }
@@ -386,7 +433,10 @@ if ('today' === $filterPeriod) {
     $month = (int) $matches[2];
     if ($year >= 2000 && $month >= 1 && $month <= 12) {
         $periodStart = sprintf('%04d-%02d-01 00:00:00', $year, $month);
-        $periodEnd = date('Y-m-d 00:00:00', strtotime($periodStart . ' +1 month'));
+        $periodEndTimestamp = strtotime($periodStart . ' +1 month');
+        $periodEnd = false !== $periodEndTimestamp
+            ? date('Y-m-d 00:00:00', $periodEndTimestamp)
+            : null;
     }
 }
 
@@ -582,9 +632,10 @@ echo '</form>';
 echo '<hr style="margin-top:0; margin-bottom:0;">';
 
 // Use rex_list for sortable/paginated table rendering in backend.
+$rowsPerPage = $normalizeInt($this->getConfig('rows_per_page'), 100);
 $list = rex_list::factory(
     $query,
-    $this->getConfig('rows_per_page') ?: 100,
+    $rowsPerPage,
     'vtrans_data',
     false,
     1,
@@ -657,38 +708,47 @@ $list->setColumnLayout('payload_length', ['<th style="width:400px">###VALUE###</
 
 
 $list->setColumnFormat('length', 'custom', function () use ($list, $truncate) {
-    $length = $list->getValue('length');
+    $rawLength = $list->getValue('length');
+    $length = is_numeric((string) $rawLength) ? (float) $rawLength : 0.0;
     $text = (string)  $list->getValue('text');
     if ('html' === (string) $list->getValue('format')) {
         $text = strip_tags($text, '<h1><h2><h3><h4><h5><h6><p><br>');
     }
-    $text = trim(preg_replace('/[\t\s\r\n]+/', ' ', $text));
+    $text = trim((string) preg_replace('/[\t\s\r\n]+/', ' ', $text));
     return '<span title="' . rex_escape($this->i18n('vtrans_chars')) . '"><small>[' . number_format($length, 0, ',', '.') . ']</small></span><div class="vtrans-tcont" title="' . rex_escape($truncate($text, 800)) . '">' . rex_escape($truncate($text, 200)) . '</div>';
 });
 
-$list->setColumnFormat('payload_length', 'custom', function () use ($list, $truncate) {
-    $tLength = $list->getValue('length');    
-    $pLength = $list->getValue('payload_length');
-    $percReduction = $tLength > 0 ? (1 - ($pLength / $tLength)) * 100 : 0;
+$list->setColumnFormat('payload_length', 'custom', function () use ($list, $truncate, $normalizeString) {
+    $rawLength = $list->getValue('length');
+    $rawPayloadLength = $list->getValue('payload_length');
+    $tLength = is_numeric((string) $rawLength) ? (float) $rawLength : 0.0;
+    $pLength = is_numeric((string) $rawPayloadLength) ? (float) $rawPayloadLength : 0.0;
+    $percReduction = $tLength > 0.0 ? (1 - ($pLength / $tLength)) * 100 : 0.0;
     $htmlText = (string)  $list->getValue('translation');
-    if(!$htmlText) {
-        $data = $list->getValue('data');
-        $data = json_decode($data, true);
-        $htmlText = '<div class="vtrans-tcont text-warning" style="opacity:1"><i class="fa fa-warning text-danger"></i> ' . strtoupper($data['status']) . ': ' . rex_escape($truncate($data['error'], 100)) . '</div>';
-    }else{
+    if (!$htmlText) {
+        $dataString = (string) $list->getValue('data');
+        $data = '' !== $dataString ? json_decode($dataString, true) : null;
+        $status = is_array($data) ? $normalizeString($data['status'] ?? '') : '';
+        $error = is_array($data) ? $normalizeString($data['error'] ?? '') : '';
+        $htmlText = '<div class="vtrans-tcont text-warning" style="opacity:1"><i class="fa fa-warning text-danger"></i> ' . strtoupper($status) . ': ' . rex_escape($truncate($error, 100)) . '</div>';
+    } else {
         if ('html' === (string) $list->getValue('format')) {
             $htmlText = strip_tags($htmlText, '<h1><h2><h3><h4><h5><h6><p><br>');
         }
-        $htmlText = trim(preg_replace('/[\t\s\r\n]+/', ' ', $htmlText));
+        $htmlText = trim((string) preg_replace('/[\t\s\r\n]+/', ' ', $htmlText));
         $htmlText = '<div class="vtrans-tcont" title="' . rex_escape($truncate($htmlText, 800)) . '">' . rex_escape($truncate($htmlText, 200)) . '</div>';
     }
-    $reductionHtml = $percReduction > 0 ? ' <small>(-' . number_format($percReduction, 1, ',', '.') . '%)</small>' : '';
-    return '<span title="' . rex_escape($this->i18n('vtrans_field_payload_length')) . '"><small>[' . number_format($pLength, 0, ',', '.') . ']</small> ' . $reductionHtml . '</span>' . $htmlText; 
+    $reductionHtml = $percReduction > 0.0 ? ' <small>(-' . number_format($percReduction, 1, ',', '.') . '%)</small>' : '';
+    return '<span title="' . rex_escape($this->i18n('vtrans_field_payload_length')) . '"><small>[' . number_format($pLength, 0, ',', '.') . ']</small> ' . $reductionHtml . '</span>' . $htmlText;
 });
 
 $list->setColumnFormat('createdate', 'custom', static function () use ($list, $buildEditUrl) {
     $entryId = (int) $list->getValue('id');
-    $timestamp = strtotime($list->getValue('createdate'));
+    $createdAt = (string) $list->getValue('createdate');
+    $timestamp = '' !== $createdAt ? strtotime($createdAt) : false;
+    if (false === $timestamp) {
+        return '<a href="' . $buildEditUrl($entryId) . '">' . rex_escape($createdAt) . '</a>';
+    }
     return '<a href="' . $buildEditUrl($entryId) . '">' . date('d.m.Y H:i:s', $timestamp) . '</a>';
 });
 
@@ -716,9 +776,17 @@ $list->setColumnFormat('format', 'custom', static function () use ($list, $trunc
     if ('' !== $customInstructionsRaw) {
         $decodedCustomInstructions = json_decode($customInstructionsRaw, true);
         if (is_array($decodedCustomInstructions)) {
-            $customInstructionsText = implode("\n", array_filter(array_map('strval', $decodedCustomInstructions), static function (string $line): bool {
-                return '' !== trim($line);
-            }));
+            $customInstructionsText = implode("\n", array_filter(
+                array_map(
+                    static function (mixed $line): string {
+                        return is_scalar($line) ? (string) $line : '';
+                    },
+                    $decodedCustomInstructions
+                ),
+                static function (string $line): bool {
+                    return '' !== trim($line);
+                }
+            ));
         }
     }
 

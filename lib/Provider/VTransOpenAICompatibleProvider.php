@@ -16,6 +16,7 @@ use rex_exception;
  */
 class VTransOpenAIProvider implements VTransProviderInterface
 {
+	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 
 	public function supports(string $api): bool
@@ -23,10 +24,14 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return 'openai' === $api;
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
 	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
 	{
 		$debug = !empty($requestOptions['debug']);
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 		$history = [];
 		$stack = HandlerStack::create();
 		$stack->push(Middleware::history($history));
@@ -36,17 +41,17 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		]);
 
 		$customInstructions = $this->mergeCustomInstructions(
-			$config['customInstructions'] ?? [],
-			$requestOptions['customInstructions'] ?? []
+			$this->normalizeInstructions($config['customInstructions'] ?? []),
+			$this->normalizeInstructions($requestOptions['customInstructions'] ?? [])
 		);
 
 		$messages = $this->buildMessages(
-			(string) $text,
+			$this->normalizeString($text),
 			$srcLang,
 			$targetLang,
 			$format,
-			(string) ($config['systemPrompt'] ?? ''),
-			(string) ($requestOptions['promptContext'] ?? ''),
+			$this->normalizeString($config['systemPrompt'] ?? null),
+			$this->normalizeString($requestOptions['promptContext'] ?? null),
 			$customInstructions
 		);
 
@@ -67,10 +72,17 @@ class VTransOpenAIProvider implements VTransProviderInterface
 			$responsePayload = $this->sendRequest($client, $config, $payload);
 		} finally {
 			if (!empty($history)) {
-				$this->lastDebugData = $this->buildDebugData($history[0]);
+				$debugTransaction = $history[0] ?? null;
+				$debugData = [];
+				if (is_array($debugTransaction)) {
+					/** @var array<string, mixed> $debugData */
+					$debugData = $debugTransaction;
+				}
+				$this->lastDebugData = $this->buildDebugData($debugData);
 			}
 		}
-		$data = $responsePayload['data'];
+		$data = is_array($responsePayload['data'] ?? null) ? $responsePayload['data'] : [];
+		/** @var array<string, mixed> $data */
 		$translation = $this->extractTranslation($data);
 
 		if ('' === $translation) {
@@ -94,15 +106,19 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return new VTransProviderResult($translation, $resultData);
 	}
 
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
 	public function getUsage(array $modelData): array
 	{
-		$config = $this->normalizeConfig($modelData['config']);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config']));
 
 		return [
 			'provider' => 'openai',
-			'model' => (string) ($modelData['key'] ?? ''),
-			'api' => $config['api'],
-			'apiUrl' => $config['apiUrl'],
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => $this->normalizeString($config['api'] ?? null),
+			'apiUrl' => $this->normalizeString($config['apiUrl'] ?? null),
 			'usage_supported' => false,
 			'character' => null,
 		];
@@ -185,33 +201,37 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return 'en';
 	}
 
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array<string, mixed>
+	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
-		$api = trim((string) ($modelConfig['api'] ?? ''));
-		$apiUrl = trim((string) ($modelConfig['apiUrl'] ?? 'https://api.openai.com/v1/chat/completions'));
-		$apiKey = trim((string) ($modelConfig['apiKey'] ?? ''));
-		$model = trim((string) ($modelConfig['model'] ?? 'gpt-4o-mini'));
-		$timeout = (int) ($modelConfig['timeout'] ?? 90);
+		$api = trim($this->normalizeString($modelConfig['api'] ?? null));
+		$apiUrl = trim($this->normalizeString($modelConfig['apiUrl'] ?? 'https://api.openai.com/v1/chat/completions'));
+		$apiKey = trim($this->normalizeString($modelConfig['apiKey'] ?? null));
+		$model = trim($this->normalizeString($modelConfig['model'] ?? 'gpt-4o-mini'));
+		$timeout = $this->normalizeInt($modelConfig['timeout'] ?? null, 90);
 		$timeout = max(1, min($timeout, 300));
 
 		$temperatureRaw = $modelConfig['temperature'] ?? null;
 		$temperature = null;
-		if (null !== $temperatureRaw && '' !== trim((string) $temperatureRaw)) {
-			$temperature = (float) $temperatureRaw;
+		if (null !== $temperatureRaw && '' !== trim($this->normalizeString($temperatureRaw))) {
+			$temperature = (float) $this->normalizeString($temperatureRaw);
 			$temperature = max(0.0, min($temperature, 2.0));
 		}
 
 		$maxTokensRaw = $modelConfig['maxTokens'] ?? null;
 		$maxTokens = null;
-		if (null !== $maxTokensRaw && '' !== trim((string) $maxTokensRaw)) {
-			$maxTokensInt = (int) $maxTokensRaw;
+		if (null !== $maxTokensRaw && '' !== trim($this->normalizeString($maxTokensRaw))) {
+			$maxTokensInt = $this->normalizeInt($maxTokensRaw, 0);
 			if ($maxTokensInt > 0) {
 				$maxTokens = $maxTokensInt;
 			}
 		}
 
-		$systemPrompt = trim((string) ($modelConfig['systemPrompt'] ?? ''));
-		$customInstructions = $modelConfig['customInstructions'] ?? [];
+		$systemPrompt = trim($this->normalizeString($modelConfig['systemPrompt'] ?? null));
+		$customInstructions = $this->normalizeInstructions($modelConfig['customInstructions'] ?? []);
 
 		if ('' === $apiKey) {
 			throw new rex_exception('OpenAI provider requires an apiKey in the model configuration.');
@@ -238,15 +258,48 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		];
 	}
 
-	private function mergeCustomInstructions(string|array $configInstructions, string|array $requestInstructions): array
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
 	{
-		$merged = array_merge($this->normalizeCustomInstructions($configInstructions), $this->normalizeCustomInstructions($requestInstructions));
-		$merged = array_values(array_unique($merged, SORT_STRING));
+		if (!is_array($config)) {
+			return [];
+		}
 
-		return $merged;
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
 	}
 
-	private function normalizeCustomInstructions(string|array $instructions): array
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+
+	/**
+	 * @param mixed $instructions
+	 * @return list<string>
+	 */
+	private function normalizeInstructions(mixed $instructions): array
 	{
 		if (is_string($instructions)) {
 			$instructions = preg_split('/\r\n|\r|\n/', $instructions) ?: [];
@@ -254,7 +307,7 @@ class VTransOpenAIProvider implements VTransProviderInterface
 
 		$normalized = [];
 		foreach ((array) $instructions as $instruction) {
-			$instruction = trim((string) $instruction);
+			$instruction = trim($this->normalizeString($instruction));
 			if ('' !== $instruction) {
 				$normalized[] = $instruction;
 			}
@@ -263,6 +316,44 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return $normalized;
 	}
 
+	/**
+	 * @param mixed $configInstructions
+	 * @param mixed $requestInstructions
+	 * @return list<string>
+	 */
+	private function mergeCustomInstructions(mixed $configInstructions, mixed $requestInstructions): array
+	{
+		$merged = array_merge($this->normalizeCustomInstructions($configInstructions), $this->normalizeCustomInstructions($requestInstructions));
+		$merged = array_values(array_unique($merged, SORT_STRING));
+
+		return $merged;
+	}
+
+	/**
+	 * @param mixed $instructions
+	 * @return list<string>
+	 */
+	private function normalizeCustomInstructions(mixed $instructions): array
+	{
+		if (is_string($instructions)) {
+			$instructions = preg_split('/\r\n|\r|\n/', $instructions) ?: [];
+		}
+
+		$normalized = [];
+		foreach ((array) $instructions as $instruction) {
+			$instruction = trim($this->normalizeString($instruction));
+			if ('' !== $instruction) {
+				$normalized[] = $instruction;
+			}
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * @param string|list<string>|array<string, mixed> $customInstructions
+	 * @return list<array<string, mixed>>
+	 */
 	private function buildMessages(string $text, ?string $srcLang, string $targetLang, string $format, string $systemPrompt, string $promptContext, string|array $customInstructions): array
 	{
 		$source = null !== $srcLang && '' !== trim($srcLang) ? trim($srcLang) : 'auto-detect';
@@ -316,13 +407,18 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		];
 	}
 
+	/**
+	 * @param array<string, mixed> $config
+	 * @param array<string, mixed> $payload
+	 * @return array<string, mixed>
+	 */
 	private function sendRequest(Client $client, array $config, array $payload): array
 	{
 		try {
-			$response = $client->post($config['apiUrl'], [
+			$response = $client->post($this->normalizeString($config['apiUrl'] ?? null), [
 				'headers' => [
 					'Accept' => 'application/json',
-					'Authorization' => 'Bearer ' . $config['apiKey'],
+					'Authorization' => 'Bearer ' . $this->normalizeString($config['apiKey'] ?? null),
 				],
 				'json' => $payload,
 			]);
@@ -330,12 +426,20 @@ class VTransOpenAIProvider implements VTransProviderInterface
 			throw new rex_exception('OpenAI request timed out or connection failed.', $e);
 		} catch (GuzzleException $e) {
 			$message = $e->getMessage();
-			if (method_exists($e, 'getResponse') && null !== $e->getResponse()) {
-				$status = $e->getResponse()->getStatusCode();
-				$body = (string) $e->getResponse()->getBody();
+			$response = null;
+			if (method_exists($e, 'getResponse')) {
+				$response = $e->getResponse();
+			}
+			if ($response instanceof \Psr\Http\Message\ResponseInterface) {
+				$status = $response->getStatusCode();
+				$body = (string) $response->getBody();
 				if ('' !== $body) {
 					$decoded = json_decode($body, true);
-					$apiMessage = (string) ($decoded['error']['message'] ?? '');
+					$errorPayload = [];
+					if (is_array($decoded)) {
+						$errorPayload = is_array($decoded['error'] ?? null) ? $decoded['error'] : [];
+					}
+					$apiMessage = $this->normalizeString($errorPayload['message'] ?? null);
 					if ('' !== $apiMessage) {
 						$message = $apiMessage;
 					}
@@ -343,11 +447,11 @@ class VTransOpenAIProvider implements VTransProviderInterface
 				$message .= ' (HTTP ' . $status . ')';
 			}
 
-			throw new rex_exception('OpenAI request failed: ' . $message, $e);
+			throw new rex_exception('OpenAI request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
-		$data = json_decode((string) $response->getBody(), true);
-		if (!is_array($data)) {
+		$data = $this->normalizeJsonArray(json_decode((string) $response->getBody(), true));
+		if ([] === $data) {
 			throw new rex_exception('OpenAI provider returned an invalid JSON response.');
 		}
 
@@ -359,6 +463,7 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		];
 	}
 
+	/** @return array<string, string>|null */
 	private function extractRateLimit(\Psr\Http\Message\ResponseInterface $response): ?array
 	{
 		$rateLimit = array_filter([
@@ -373,9 +478,15 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return [] !== $rateLimit ? $rateLimit : null;
 	}
 
+	/**
+	 * @param array<string, mixed> $data
+	 */
 	private function extractTranslation(array $data): string
 	{
-		$content = $data['choices'][0]['message']['content'] ?? null;
+		$choices = is_array($data['choices'] ?? null) ? $data['choices'] : [];
+		$firstChoice = [] !== $choices && isset($choices[0]) && is_array($choices[0]) ? $choices[0] : [];
+		$message = is_array($firstChoice['message'] ?? null) ? $firstChoice['message'] : [];
+		$content = $message['content'] ?? null;
 
 		if (is_string($content)) {
 			return trim($content);
@@ -383,7 +494,7 @@ class VTransOpenAIProvider implements VTransProviderInterface
 
 		if (is_array($content)) {
 			$text = implode('', array_filter(array_map(
-				static fn(array $part): string => (string) ($part['text'] ?? ''),
+				static fn(mixed $part): string => is_array($part) && isset($part['text']) && is_string($part['text']) ? trim($part['text']) : '',
 				$content,
 			)));
 			if ('' !== $text) {
@@ -391,38 +502,64 @@ class VTransOpenAIProvider implements VTransProviderInterface
 			}
 		}
 
-		return trim((string) ($data['output_text'] ?? ''));
+		return trim($this->normalizeString($data['output_text'] ?? null));
 	}
 
+	/** @return array<string, mixed> */
 	public function getLastDebugData(): array
 	{
 		return $this->lastDebugData;
 	}
 
+	/** @return array<string, mixed> */
+	private function normalizeJsonArray(mixed $value): array
+	{
+		if (!is_array($value)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($value as $key => $item) {
+			$normalized[is_string($key) ? $key : (string) $key] = $item;
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * @param array<string, mixed> $transaction
+	 * @return array<string, mixed>
+	 */
 	private function buildDebugData(array $transaction): array
 	{
-		/** @var \Psr\Http\Message\RequestInterface $req */
-		$req = $transaction['request'];
-		/** @var \Psr\Http\Message\ResponseInterface|null $res */
+		$req = $transaction['request'] ?? null;
 		$res = $transaction['response'] ?? null;
 
-		$requestHeaders = $req->getHeaders();
-		if (isset($requestHeaders['Authorization'])) {
-			$requestHeaders['Authorization'] = ['Bearer ***'];
+		$requestHeaders = [];
+		if ($req instanceof \Psr\Http\Message\RequestInterface) {
+			$requestHeaders = $req->getHeaders();
+			if (isset($requestHeaders['Authorization'])) {
+				$requestHeaders['Authorization'] = ['Bearer ***'];
+			}
+		}
+
+		$responseData = null;
+		if ($res instanceof \Psr\Http\Message\ResponseInterface) {
+			$responseData = [
+				'status' => $res->getStatusCode(),
+				'headers' => $res->getHeaders(),
+				'body' => $this->normalizeJsonArray(json_decode((string) $res->getBody(), true)),
+			];
 		}
 
 		return [
-			'request' => [
+			'request' => $req instanceof \Psr\Http\Message\RequestInterface ? [
 				'method' => $req->getMethod(),
 				'uri' => (string) $req->getUri(),
 				'headers' => $requestHeaders,
-				'body' => json_decode((string) $req->getBody(), true),
-			],
-			'response' => null !== $res ? [
-				'status' => $res->getStatusCode(),
-				'headers' => $res->getHeaders(),
-				'body' => json_decode((string) $res->getBody(), true),
+				'body' => $this->normalizeJsonArray(json_decode((string) $req->getBody(), true)),
 			] : null,
+			'response' => $responseData,
 		];
 	}
 
@@ -431,6 +568,7 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return 'OpenAI';
 	}
 
+	/** @return list<string> */
 	public function getApiIdentifiers(): array
 	{
 		return ['openai'];
@@ -450,10 +588,11 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		];
 	}
 
+	/** @param array<string, mixed> $values @return array<string, string> */
 	public function validateConfig(array $values): array
 	{
 		$errors = [];
-		if (empty(trim((string) ($values['api_key'] ?? '')))) {
+		if (empty(trim($this->normalizeString($values['api_key'] ?? null)))) {
 			$errors['api_key'] = 'API Key is required.';
 		}
 		return $errors;

@@ -5,6 +5,42 @@
 use FriendsOfRedaxo\VTrans\VTrans;
 use FriendsOfRedaxo\VTrans\VTransConnection;
 
+$normalizeString = static function (mixed $value): string {
+    return is_scalar($value) ? (string) $value : '';
+};
+$normalizeInt = static function (mixed $value, int $default = 0): int {
+    if (is_int($value)) {
+        return $value;
+    }
+
+    if (is_float($value)) {
+        return (int) $value;
+    }
+
+    if (is_string($value) && is_numeric($value)) {
+        return (int) $value;
+    }
+
+    return $default;
+};
+
+$normalizeDisplayData = null;
+$normalizeDisplayData = static function (mixed $value) use (&$normalizeDisplayData): mixed {
+    if (is_array($value)) {
+        $normalized = [];
+        foreach ($value as $key => $item) {
+            $normalized[is_string($key) ? $key : (string) $key] = $normalizeDisplayData($item);
+        }
+        return $normalized;
+    }
+
+    if (is_object($value)) {
+        return null;
+    }
+
+    return $value;
+};
+
 // Build connection selector and resolve fallback connection.
 $playgroundConnections = VTransConnection::getAllPlayground();
 $defaultConnection = VTransConnection::getDefaultPlayground();
@@ -42,7 +78,13 @@ $getConnectionDebugDefault = static function (?string $connectionKey, array $con
     if (null === $connectionKey || '' === trim($connectionKey) || !isset($connectionsByKey[$connectionKey])) {
         return false;
     }
-    return $connectionsByKey[$connectionKey]->isDebug();
+
+    $connection = $connectionsByKey[$connectionKey];
+    if (!$connection instanceof VTransConnection) {
+        return false;
+    }
+
+    return $connection->isDebug();
 };
 
 $defaultDebugEnabled = $getConnectionDebugDefault($requestConnectionKey, $connectionsByKey);
@@ -130,7 +172,9 @@ if ($retryId > 0 && !rex_post('config-submit', 'boolean')) {
             if ('' !== trim($retryCustomInstructions)) {
                 $decodedRetryCustomInstructions = json_decode($retryCustomInstructions, true);
                 if (is_array($decodedRetryCustomInstructions)) {
-                    $requestData['custom_instructions'] = implode("\n", array_filter(array_map('strval', $decodedRetryCustomInstructions), static function (string $line): bool {
+                    $requestData['custom_instructions'] = implode("\n", array_filter(array_map(static function (mixed $line): string {
+                        return is_scalar($line) ? (string) $line : '';
+                    }, $decodedRetryCustomInstructions), static function (string $line): bool {
                         return '' !== trim($line);
                     }));
                 } else {
@@ -173,6 +217,10 @@ $entryId = 0;
 $tokenUsage = null;
 $rateLimit = null;
 $cacheMode = 'default';
+/** @var array<string, mixed> $lastResultMeta */
+$lastResultMeta = [];
+/** @var array<string, mixed> $entryData */
+$entryData = [];
 $effectiveConnection = '' !== $requestData['connection'] ? $requestData['connection'] : ($defaultConnectionKey ?? '-');
 $selectedConnectionKey = '' !== $requestData['connection'] ? $requestData['connection'] : $defaultConnectionKey;
 $connectionSupportsPromptOptions = VTrans::connectionSupportsPromptOptions($selectedConnectionKey);
@@ -195,11 +243,13 @@ if ($shouldTranslate) {
             ]
         );
 
+        /** @var array<string, mixed> $lastResultMeta */
         $lastResultMeta = VTrans::getLastResultMeta();
+        /** @var array<string, mixed> $entryData */
         $entryData = VTrans::getLastResultData();
         $cacheHit = (bool) ($lastResultMeta['cached'] ?? false);
-        $cacheMode = (string) ($lastResultMeta['cacheMode'] ?? 'default');
-        $entryId = (int) ($lastResultMeta['id'] ?? 0);
+        $cacheMode = $normalizeString($lastResultMeta['cacheMode'] ?? 'default');
+        $entryId = $normalizeInt($lastResultMeta['id'] ?? 0);
         if (isset($entryData['usage']) && is_array($entryData['usage'])) {
             $tokenUsage = $entryData['usage'];
         }
@@ -215,12 +265,16 @@ if ($shouldTranslate) {
                 if ('' !== trim($entryDataRaw)) {
                     $storedEntryData = json_decode($entryDataRaw, true);
                     if (is_array($storedEntryData)) {
-                        $entryData = $storedEntryData;
-                        if (isset($storedEntryData['usage']) && is_array($storedEntryData['usage'])) {
-                            $tokenUsage = $storedEntryData['usage'];
-                        }
-                        if (isset($storedEntryData['rate_limit']) && is_array($storedEntryData['rate_limit'])) {
-                            $rateLimit = $storedEntryData['rate_limit'];
+                        $normalizedEntryData = $normalizeDisplayData($storedEntryData);
+                        if (is_array($normalizedEntryData)) {
+                            /** @var array<string, mixed> $entryData */
+                            $entryData = $normalizedEntryData;
+                            if (isset($entryData['usage']) && is_array($entryData['usage'])) {
+                                $tokenUsage = $entryData['usage'];
+                            }
+                            if (isset($entryData['rate_limit']) && is_array($entryData['rate_limit'])) {
+                                $rateLimit = $entryData['rate_limit'];
+                            }
                         }
                     }
                 }
@@ -296,9 +350,9 @@ if (null === $usageConnectionKey || !isset($connectionsByKey[$usageConnectionKey
     $usageSummary = $this->i18n('vtrans_usage_no_char_limit');
 } else {
     $character = $usageData['character'];
-    $count = (int) ($character['count'] ?? 0);
-    $limit = (int) ($character['limit'] ?? 0);
-    $remaining = (int) ($character['remaining'] ?? 0);
+    $count = $normalizeInt($character['count'] ?? 0);
+    $limit = $normalizeInt($character['limit'] ?? 0);
+    $remaining = $normalizeInt($character['remaining'] ?? 0);
     $usagePercent = $limit > 0 ? (int) round(($count / $limit) * 100) : 0;
     $usagePercent = max(0, min(100, $usagePercent));
 
@@ -644,9 +698,9 @@ if ($shouldTranslate) {
         ];
 
         if (is_array($tokenUsage)) {
-            $promptTokens = (int) ($tokenUsage['prompt_tokens'] ?? 0);
-            $completionTokens = (int) ($tokenUsage['completion_tokens'] ?? 0);
-            $totalTokens = (int) ($tokenUsage['total_tokens'] ?? ($promptTokens + $completionTokens));
+            $promptTokens = $normalizeInt($tokenUsage['prompt_tokens'] ?? 0);
+            $completionTokens = $normalizeInt($tokenUsage['completion_tokens'] ?? 0);
+            $totalTokens = $normalizeInt($tokenUsage['total_tokens'] ?? ($promptTokens + $completionTokens));
             $resultMetaLines[] = $this->i18n('vtrans_tokens') . ': '
                 . $this->i18n('vtrans_tokens_prompt') . ' ' . (string) $promptTokens . ', '
                 . $this->i18n('vtrans_tokens_completion') . ' ' . (string) $completionTokens . ', '
@@ -656,24 +710,24 @@ if ($shouldTranslate) {
         if (is_array($rateLimit)) {
             $requestRateText = [];
             if (isset($rateLimit['requests_limit'])) {
-                $requestRateText[] = $this->i18n('vtrans_rate_limit_limit') . ' ' . rex_escape((string) $rateLimit['requests_limit']);
+                $requestRateText[] = $this->i18n('vtrans_rate_limit_limit') . ' ' . rex_escape($normalizeString($rateLimit['requests_limit']));
             }
             if (isset($rateLimit['requests_remaining'])) {
-                $requestRateText[] = $this->i18n('vtrans_remaining') . ' ' . rex_escape((string) $rateLimit['requests_remaining']);
+                $requestRateText[] = $this->i18n('vtrans_remaining') . ' ' . rex_escape($normalizeString($rateLimit['requests_remaining']));
             }
             if (isset($rateLimit['requests_reset'])) {
-                $requestRateText[] = $this->i18n('vtrans_rate_limit_reset') . ' ' . rex_escape((string) $rateLimit['requests_reset']);
+                $requestRateText[] = $this->i18n('vtrans_rate_limit_reset') . ' ' . rex_escape($normalizeString($rateLimit['requests_reset']));
             }
 
             $tokenRateText = [];
             if (isset($rateLimit['tokens_limit'])) {
-                $tokenRateText[] = $this->i18n('vtrans_rate_limit_limit') . ' ' . rex_escape((string) $rateLimit['tokens_limit']);
+                $tokenRateText[] = $this->i18n('vtrans_rate_limit_limit') . ' ' . rex_escape($normalizeString($rateLimit['tokens_limit']));
             }
             if (isset($rateLimit['tokens_remaining'])) {
-                $tokenRateText[] = $this->i18n('vtrans_remaining') . ' ' . rex_escape((string) $rateLimit['tokens_remaining']);
+                $tokenRateText[] = $this->i18n('vtrans_remaining') . ' ' . rex_escape($normalizeString($rateLimit['tokens_remaining']));
             }
             if (isset($rateLimit['tokens_reset'])) {
-                $tokenRateText[] = $this->i18n('vtrans_rate_limit_reset') . ' ' . rex_escape((string) $rateLimit['tokens_reset']);
+                $tokenRateText[] = $this->i18n('vtrans_rate_limit_reset') . ' ' . rex_escape($normalizeString($rateLimit['tokens_reset']));
             }
 
             if ([] !== $requestRateText) {
@@ -685,13 +739,17 @@ if ($shouldTranslate) {
             }
         }
 
-        $durationMs = (int) ($lastResultMeta['durationMs'] ?? 0);
-        if ($durationMs > 0) {
+        $durationMeta = null;
+        if (array_key_exists('durationMs', $lastResultMeta)) {
+            $durationMeta = $lastResultMeta['durationMs'];
+        }
+        $durationMs = $normalizeInt($durationMeta, 0);
+        if (is_int($durationMeta) || is_float($durationMeta) || (is_string($durationMeta) && is_numeric($durationMeta))) {
             $durationSec = $durationMs / 1000;
             $durationFormatted = number_format($durationSec, 2, '.', '') . 's';
             $inputLength = mb_strlen((string) $requestData['text']);
             $speedLine = 'Duration: ' . $durationFormatted;
-            if ($inputLength > 0 && !$cacheHit) {
+            if (!$cacheHit && 1 === preg_match('/./u', (string) $requestData['text'])) {
                 $secPer1k = $durationSec / ($inputLength / 1000);
                 $speedLine .= ' &mdash; ' . number_format($secPer1k, 2, '.', '') . 's / 1k chars';
             }
@@ -729,8 +787,12 @@ if ($shouldTranslate) {
         $resultContent = $fragment->parse('core/page/section.php');
         echo $resultContent;
 
-        if ($requestData['debug'] && isset($entryData['_debug'])) {
-            $debugJson = json_encode($entryData['_debug'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $debugPayload = null;
+        if (array_key_exists('_debug', $entryData)) {
+            $debugPayload = $entryData['_debug'];
+        }
+        if ($requestData['debug'] && is_array($debugPayload)) {
+            $debugJson = json_encode($debugPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             $debugElements = [];
             $n = [];
             $n['label'] = '';
@@ -739,7 +801,7 @@ if ($shouldTranslate) {
 
             $debugFragment = new rex_fragment();
             $debugFragment->setVar('elements', $debugElements, false);
-            $debugBody = $debugElements[0]['field'] ?? '';
+            $debugBody = $debugElements[0]['field'];
 
             $debugSection = new rex_fragment();
             $debugSection->setVar('class', 'notice');
