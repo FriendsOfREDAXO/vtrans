@@ -6,7 +6,9 @@
     },
     "require": {
         "php": ">=8.2",
-        "guzzlehttp/guzzle": "^7.9",
-        "google/auth": "^1.39"
+        "guzzlehttp/guzzle": "^7.12.3",
+        "google/auth": "^1.39",
+        "guzzlehttp/promises": "^2.5",
+        "guzzlehttp/psr7": "^2.12.3"
     }
 }
