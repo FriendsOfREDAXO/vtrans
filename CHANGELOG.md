@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Renamed the OpenAI provider identifier from `openai-compatible` to `openai` across the addon codebase, class names, and documentation.
 
+## [0.1.0-beta2] - 2026-06-26
+
+### Changed
+- Bundled the Composer dependencies in the addon vendor directory so the addon installer can run without a separate Composer step.
+- Updated Guzzle-related dependencies to patched versions for current security fixes.
+
 ## [0.1.0-beta1] - 2026-06-18
 
 ### Added

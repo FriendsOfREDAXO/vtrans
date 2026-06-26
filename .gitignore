@@ -1,5 +1,4 @@
 .DS_Store
-vendor/
 *.log
 
 # Local editor/AI helper files
