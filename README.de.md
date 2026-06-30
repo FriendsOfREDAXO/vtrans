@@ -14,7 +14,7 @@ z. B. Zusammenfassen, Umformulieren oder inhaltliche Bearbeitung von Texten.
 
 ## Installation
 
-Über den REDAXO-Installer installieren oder manuell nach `redaxo/src/addons/vtrans` kopieren und anschließend im Backend aktivieren.
+Über den REDAXO-Installer (noch nicht verfügbar) installieren oder manuell nach `redaxo/src/addons/vtrans` kopieren und anschließend im Backend aktivieren.
 
 **Voraussetzungen:**
 - REDAXO >= 5.17.0
@@ -39,7 +39,7 @@ Beispiel für eine DeepL-Free-Verbindung:
 
 Hinweise:
 - Free-Keys gehören zur Free-API-URL `https://api-free.deepl.com/v2/translate`.
-- Der Standard-Connector wird automatisch verwendet, wenn beim Aufruf kein `connection`-Wert übergeben wird.
+- Die Standard-Connection wird automatisch verwendet, wenn beim Aufruf kein `connection`-Wert übergeben wird.
 
 ---
 
@@ -48,8 +48,8 @@ Hinweise:
 - Mehrere Provider über eine einheitliche API ansprechen
 - Verbindungen zentral im Backend verwalten
 - Abrufe manuell im Backend testen (Playground)
-- DB Cache über Hash, Verbindung, Sprache und Format nutzen
-- Stabile Keys für wiederverwendbare Inhalte unterstützen
+- DB Cache wird über String-Hash, Verbindung, Sprache und Format überwacht
+- Stabile Keys (optional) für wiederverwendbare Inhalte
 - Gespeicherte Datensätze unter `Daten` suchen, filtern, prüfen und bearbeiten
 - Provider-Metadaten wie Usage oder Rate-Limits als Rohdaten mitführen
 
@@ -58,63 +58,73 @@ Hinweise:
 ## Unterstützte Provider / APIs
 
 ### DeepL
+- Branchenprimus mit sehr guter Qualität bei gängigen Sprachen
 - `deepl-api-free-v2`
 - `deepl-api-pro-v2`
 - Unterstützt `context` und `customInstructions`
 
 ### Amazon Translate
+- Gute bis sehr gute Übersetzungsqualität
 - `amazon-translate-v1`
 - API-Key-/Credential-basiert je nach Provider-Implementierung
 
 ### Google Translate Basic v2
+- Gute bis sehr gute Übersetzungsqualität
 - `google-translate-basic-v2`
 - API-Key-basiert
 - Keine Prompt-Optionen
 
 ### Google Translate v3
-- `google-translate-v3`
+- Sehr gute Übersetzungsqualität
 - Service-Account / OAuth-basiert
 - Keine Prompt-Optionen
 
 ### LibreTranslate
+- Gute Qualität - ausreichend für die meisten Zwecke
+- Open-Source - kann auch selbst gehostet werden 
 - `libretranslate-v1`
 - Optional `apiKey`
 - Keine Prompt-Optionen
 
 ### MyMemory
+- Einfache, eher technische Übersetzung
 - `mymemory-v2`
 - Endpoint-basiert (Standard: `https://api.mymemory.translated.net/get`)
 - Optional `apiKey` und `email`
 - Keine Prompt-Optionen
 
-### OpenAI
+### OpenAI-kompatible LLMs
+- Je nach Modell - flexibel einsetzbar.
 - `openai`
 - Frei konfigurierbare Endpunkte und Parameter
 - Unterstützt `context` und `customInstructions`
 
+### Fake Local
+- praktisch während der Entwicklung
+- Erzeugt einfaches "Kauderwelsch" um die Funktion zu testen
+- nur lokal - keine API - keine Kosten
+
 ---
+
+## Kosten
+Die Kosten der jeweiligen Provider sind sehr unterscheidlich und setzen sich meistens aus einer monatlichen Grundgebühr (Abo) und Kosten je 1 Mio Zeichen zusammen. Oft gibt es auch kostenlose oder inkludierte Kontingente. Das muss jeder selbst vergleichen. LibreTranslate kann auf entsprechender Hardware auch selbst gehostet werden. Für eine umfangreiche Webseite muss man je Sprache mit 20–50 EUR rechnen (natürlich nur ganz grob)
 
 ## Konfiguration
 
-Die Konfiguration erfolgt jetzt über die Backend-Seite `Connections`. Dort werden Verbindungen mit:
+Die Konfiguration erfolgt über die Backend-Seite `Connections`. Dort werden Verbindungen definiert. Je nach Schnittstelle werden entsprechende Angaben gespeichert: 
 
-- Key
-- Label
-- Provider
-- API-Key / API-URL
-- System-Prompt
+- Key (Identifizierung)
+- Label (Bezeichnung)
+- Provider / API (Anbieter / Schnittstelle)
+- Debug-Flag
 - Timeout
 - Max. Zeichen
-- Debug
-- Playground-Flag
-- Provider-spezifischen Parametern
+- Playground-Flag (im Playground verfügbar)
+- verschiedene providerspezifische Parameter
 
-verwaltet.
-
-Wichtige Hinweise:
-- Der Default-Connector wird automatisch verwendet, wenn kein `connection`-Wert gegeben ist.
-- Für die API-Nutzung werden die Verbindungen aus der Datenbank geladen und in `VTrans::translate()` verwendet.
-- Für neue Integrationen können mehrere Provider-Konfigurationen nebeneinander existieren.
+Hinweise:
+- Die Standard-Connection wird automatisch verwendet, wenn bei der Abfrage keine individuelle `Connection` definiert ist.
+- Die Standard-Connection und auch die Verfügbarkeit im Playground kann in der Connections-Übersicht schnell umgeschaltet werden
 
 ---
 
@@ -138,82 +148,36 @@ Wenn ein `key` gesetzt ist, arbeitet vTrans modell- und zielsprachebezogen mit e
 - Hat sich der Inhalt geändert, wird der bestehende Key-Datensatz aktualisiert.
 - Ohne Key greift nur der normale Cache über Hash, Verbindung, Sprache und Format.
 
-### Ergebnisblock
-
-Der Ergebnisblock zeigt unter anderem:
-- Verbindung und Datensatz-ID
-- ob ein Ergebnis aus Cache oder API kam
-- Token- und Rate-Limit-Daten, falls verfügbar
-- einen Link zur Detailansicht unter `Daten`
-
-Zusätzlich liefert `VTrans::getLastResultMeta()` request-lokale Metadaten wie:
-- `id`
-- `cached`
-- `cacheMode`
-- `connection`
-- `api`
-- `key`
-- `hash`
-- `sourceLang`
-- `targetLang`
-- `format`
-- `contentLength`
-- `promptOptionsUsed`
-- `durationMs`
-
----
-
-## Daten
-
-Die Daten werden in `rex_vtrans` gespeichert.
-
-Wichtige Felder sind unter anderem:
-- `api`
-- `connection`
-- `key`
-- `hash`
-- `source`, `target`, `format`
-- `text`, `translation`
-- `length`, `duration_ms`
-- `prompt`, `custom_instructions`
-- `data`
-- `createdate`, `createuser`, `updatedate`, `updateuser`
-
-Cache und Wiederverwendung funktionieren über:
-- Hash der Anfrage
-- Verbindung / Provider
-- Quelle / Ziel
-- Format
-
-Key-Datensätze sind an `key + target + connection` gebunden.
-
----
-
 ## Verwendung im Code
 
 vTrans verwendet den Namespace `FriendsOfRedaxo\VTrans`.
 
 ```php
-use FriendsOfRedaxo\VTrans\VTrans;
+use FriendsOfRedaxo\VTrans\VTrans;           // Namespace für die VTrans-Klasse
 
 $translated = VTrans::translate(
-    '<p>Hello world</p>',
-    'en',
-    'de',
-    'html',
-    'homepage_hero',
-    [
-        'connection' => 'deepl_free',
-        'context' => 'Marketing headline',
-        'customInstructions' => [
+    '<p>Hello world</p>',                    // zu übersetzender Content
+    'en',                                    // Quellsprache (auch 'auto' möglich)
+    'de',                                    // Zielsprache
+    'html',                                  // Format (text oder html)
+    'homepage_hero',                         // Optionaler Key
+    [                                        // weitere optionale Parameter
+        'connection' => 'deepl_free',        // Connection (sonst wird Standard-Connection verwendet)
+        'context' => 'Marketing headline',   // zusätzliche Kontext (falls unterstützt)
+        'customInstructions' => [            // zusätzliche Vorgaben (falls unterstützt)
             'Use formal tone.',
             'Keep HTML tags unchanged.',
         ],
     ]
 );
 
+echo $translated;
+
+// Optionale Debug-Ausgaben
 $meta = VTrans::getLastResultMeta();
 $data = VTrans::getLastResultData();
+dump($meta);
+dump($data);
 ```
 
 Unterstützte Request-Optionen sind unter anderem:
@@ -223,6 +187,63 @@ Unterstützte Request-Optionen sind unter anderem:
 - `customInstructions`: Array oder mehrzeiliger String mit zusätzlichen Vorgaben
 - `debug`: aktiviert Debug-Daten des Providers
 - `cache`: boolean (`true` als Standard). Mit `false` wird DB-Cache-Lookup und Persistierung übersprungen.
+
+## Einfaches Template Beispiel
+
+Hier wird einfach der deutsche Originalinhalt übersetzt und in einer anderen Sprache ausgegeben, wenn für diese Sprache kein eigener Inhalt verfügbar ist - der Artikel also leer ist.
+
+```php
+<?php
+use FriendsOfRedaxo\VTrans\VTrans;
+
+// Aktuelle Sprache des REDAXO-Artikelkontexts
+$curLang = rex_clang::getCurrent()->getCode();
+
+// Inhalt des aktuellen Artikels
+$articleContent = $this->getArticle();
+
+// Wenn wir uns in einer nicht-Standardsprache befinden und noch kein Inhalt vorhanden ist,
+// holen wir den deutschen Originalinhalt und lassen ihn von vTrans übersetzen.
+if (rex_clang::getCurrentId() !== 1 && $articleContent === '') {
+    // Deutscher Originalinhalt aus der Basis-Sprache (ID 1)
+    $articleContentOrg = (new rex_article_content(rex_article::getCurrentId(), 1))->getArticle();
+
+    $articleContent = VTrans::translate(
+        $articleContentOrg,                         // Zu übersetzender Inhalt
+        'de',                                       // Quellsprache
+        $curLang,                                   // Zielsprache
+        'html',                                     // Format
+        'artCont-' . rex_article::getCurrentId()    // Key für besseres Caching
+    );
+}
+?>
+<!DOCTYPE html>
+<html lang="<?php echo htmlspecialchars($curLang, ENT_QUOTES, 'UTF-8'); ?>">
+<head>
+    <meta charset="utf-8">
+    <title>vTrans Demo</title>
+</head>
+<body>
+    <h1>vTrans Demo</h1>
+    <!-- Einfacher Sprachumschalter für die Demo -->
+    <nav>
+        <?php foreach (rex_clang::getAll(true) as $lang): ?>
+            <?php if ($lang->getValue('id') === rex_clang::getCurrentId()): ?>
+                | <strong><?php echo htmlspecialchars($lang->getValue('name')); ?></strong> 
+            <?php else: ?>
+                | <a href="<?php echo rex_getUrl($this->getValue('article_id'), $lang->getValue('id')); ?>">
+                    <?php echo htmlspecialchars($lang->getValue('name')); ?>
+                </a>
+            <?php endif; ?>
+        <?php endforeach; ?>
+    </nav>
+
+    <?php echo $articleContent; ?>
+</body>
+</html>
+```
+
+In diesem Beispiel wird nur der eigentliche Inhalt übersetzt. Andere Teile wie z.B. die Navigation, Footer, Meta-Daten etc. können auf die gleiche Weise übersetzt werden. Bei der Navigation empfiehlt sich oft eine manuelle Übersetzung, weil darüber meistens auch die URL beeinflusst wird.
 
 ### No-Cache-Modus
 
@@ -281,15 +302,6 @@ Beim Format `html` läuft automatisch ein provider-unabhängiger HTML-Filter, de
 - `<style>…</style>`
 - `<code>…</code>`
 - `<svg>…</svg>`
-
----
-
-## Troubleshooting
-
-- „No active translation connections configured for vTrans.“: Es existiert keine aktive Verbindung im Backend.
-- „Translation connection not found“: Der übergebene `connection`-Key ist nicht vorhanden.
-- „Unsupported translation API“: Der Provider-Name einer Verbindung ist unbekannt.
-- Keine Usage-Anzeige: Wird nur von Providern unterstützt, die entsprechende Endpunkte liefern.
 
 ---
 
