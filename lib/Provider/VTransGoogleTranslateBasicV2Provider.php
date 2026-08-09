@@ -2,6 +2,7 @@
 
 namespace FriendsOfRedaxo\VTrans\Provider;
 
+use FriendsOfRedaxo\VTrans\VTransError;
 use FriendsOfRedaxo\VTrans\VTransProviderInterface;
 use FriendsOfRedaxo\VTrans\VTransProviderResult;
 use GuzzleHttp\Client;
@@ -297,7 +298,9 @@ class VTransGoogleTranslateBasicV2Provider implements VTransProviderInterface
 				}
 			}
 
-			throw new rex_exception('Google Translate Basic v2 request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
+			// The key travels as a query parameter, and Guzzle puts the full URI
+			// into its message — redact before it can reach a log or a page.
+			throw new rex_exception('Google Translate Basic v2 request failed: ' . VTransError::redact($message), new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
 		$decodedBody = json_decode((string) $response->getBody(), true);

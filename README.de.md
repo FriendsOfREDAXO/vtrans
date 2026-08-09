@@ -223,6 +223,8 @@ Der `errorType` wird zusätzlich in der `data`-Spalte des Datensatzes abgelegt u
 
 Ist im selben Browser ein Backend-User angemeldet, wird die Fehlermeldung im Frontend zusätzlich ausgegeben — bei `format = 'html'` als kleiner Block hinter dem Inhalt, bei `format = 'text'` als angehängter `[…]`-Hinweis. Normale Besucher sehen davon nichts, sondern nur den unübersetzten Text.
 
+Provider-Meldungen werden redigiert, bevor sie gespeichert, geloggt oder ausgegeben werden: Query-Parameter wie `key=` oder `api_key=`, `Bearer`- und `DeepL-Auth-Key`-Werte sowie die AWS-Credential-Header werden durch `***` ersetzt. Guzzle schreibt die vollständige Request-URI in seine Exception-Meldungen, und Google Translate Basic v2 sowie MyMemory übergeben den API-Key als Query-Parameter — ohne Redaction landet der Key in der `data`-Spalte, die jeder User mit der Berechtigung `vtrans[]` lesen kann.
+
 ## Einfaches Template Beispiel
 
 Hier wird einfach der deutsche Originalinhalt übersetzt und in einer anderen Sprache ausgegeben, wenn für diese Sprache kein eigener Inhalt verfügbar ist - der Artikel also leer ist.

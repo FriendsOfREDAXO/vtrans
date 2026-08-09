@@ -4,6 +4,7 @@
 
 use FriendsOfRedaxo\VTrans\VTrans;
 use FriendsOfRedaxo\VTrans\VTransConnection;
+use FriendsOfRedaxo\VTrans\VTransError;
 
 $normalizeString = static function (mixed $value): string {
     return is_scalar($value) ? (string) $value : '';
@@ -200,7 +201,7 @@ if (null !== $usageConnectionKey && isset($connectionsByKey[$usageConnectionKey]
     try {
         $usageData = VTrans::getUsage($usageConnectionKey);
     } catch (Throwable $e) {
-        $usageError = $e->getMessage();
+        $usageError = VTransError::redact($e->getMessage());
     }
 }
 
@@ -288,11 +289,14 @@ if ($shouldTranslate) {
                 $usageData = VTrans::getUsage($usageConnectionKey);
                 $usageError = null;
             } catch (Throwable $e) {
-                $usageError = $e->getMessage();
+                $usageError = VTransError::redact($e->getMessage());
             }
         }
     } catch (Throwable $e) {
-        $translationError = $e->getMessage();
+        // The raw message can contain the API key (Guzzle embeds the request
+        // URI). This page runs under perm vtrans[], the connections page with
+        // the keys under perm admin — so it must not be shown unredacted.
+        $translationError = VTransError::redact($e->getMessage());
     }
 }
 

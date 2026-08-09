@@ -224,6 +224,8 @@ The `errorType` is also stored in the record's `data` column and is therefore vi
 
 If a backend user is signed in in the same browser, the error message is additionally rendered in the frontend — as a small block after the content for `format = 'html'`, as an appended `[…]` hint for `format = 'text'`. Regular visitors see none of it, only the untranslated text.
 
+Provider messages are redacted before they are stored, logged or displayed: query parameters such as `key=` or `api_key=`, `Bearer` and `DeepL-Auth-Key` values, and the AWS credential headers are replaced with `***`. Guzzle embeds the full request URI in its exception messages, and Google Translate Basic v2 and MyMemory pass the API key as a query parameter — without redaction the key would end up in the `data` column, which is readable by every user with the `vtrans[]` permission.
+
 ## Simple Template Example
 
 This example simply translates the German original content and outputs it in another language when no content is available for that language — meaning the article is empty.

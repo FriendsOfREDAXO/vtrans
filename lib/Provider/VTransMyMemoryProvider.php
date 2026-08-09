@@ -2,6 +2,7 @@
 
 namespace FriendsOfRedaxo\VTrans\Provider;
 
+use FriendsOfRedaxo\VTrans\VTransError;
 use FriendsOfRedaxo\VTrans\VTransProviderInterface;
 use FriendsOfRedaxo\VTrans\VTransProviderResult;
 use GuzzleHttp\Client;
@@ -257,7 +258,10 @@ class VTransMyMemoryProvider implements VTransProviderInterface
 				$message .= ' (HTTP ' . $status . ')';
 			}
 
-			throw new rex_exception('MyMemory request failed: ' . $message, new \RuntimeException($e->getMessage(), 0, $e));
+			// Key and account e-mail travel as query parameters, and Guzzle puts
+			// the full URI into its message — redact before it can reach a log
+			// or a page.
+			throw new rex_exception('MyMemory request failed: ' . VTransError::redact($message), new \RuntimeException($e->getMessage(), 0, $e));
 		}
 
 		$decodedBody = json_decode((string) $response->getBody(), true);

@@ -382,10 +382,14 @@ class VTrans
 		array $metaContext,
 	): string {
 		$classification = VTransError::classify($e);
+		// The raw message can carry the API key (Guzzle embeds the request URI,
+		// and some providers pass the key as a query parameter), so nothing
+		// below may use $e->getMessage() directly.
+		$safeMessage = VTransError::redact($e->getMessage());
 
 		$errorData = [
 			'status' => 'error',
-			'error' => $e->getMessage(),
+			'error' => $safeMessage,
 			'errorClass' => get_class($e),
 			'errorType' => $classification['type'],
 			'httpStatus' => $classification['status'],
@@ -401,7 +405,9 @@ class VTrans
 		}
 
 		// Frontend: keep the exception out of the page but not out of the log.
-		rex_logger::logException($e);
+		// Mirrors rex_logger::logException(), which would log the unredacted
+		// message.
+		rex_logger::factory()->log($e::class, $safeMessage, [], $e->getFile(), $e->getLine());
 
 		self::setLastResultMeta(
 			$entryId,
@@ -419,14 +425,14 @@ class VTrans
 				'cache' => $metaContext['cache'] ?? true,
 				'cacheMode' => $metaContext['cacheMode'] ?? 'default',
 				'failed' => true,
-				'error' => $e->getMessage(),
+				'error' => $safeMessage,
 				'errorType' => $classification['type'],
 				'httpStatus' => $classification['status'],
 			]
 		);
 		self::setLastResultData(self::normalizeResultData($errorData));
 
-		return $originalText . self::buildBackendUserNotice($e, $classification, $format);
+		return $originalText . self::buildBackendUserNotice($safeMessage, $classification, $format);
 	}
 
 	/**
@@ -454,9 +460,13 @@ class VTrans
 	 * backend session additionally sees what went wrong, so a silent fallback
 	 * does not go unnoticed. Returns an empty string for everyone else.
 	 *
+	 * $safeMessage must already have been through {@see VTransError::redact()} —
+	 * a backend session is not the same as admin rights, and the API keys live
+	 * on an admin-only page.
+	 *
 	 * @param array{type: string, status: int|null} $classification
 	 */
-	private static function buildBackendUserNotice(Throwable $e, array $classification, string $format): string
+	private static function buildBackendUserNotice(string $safeMessage, array $classification, string $format): string
 	{
 		if (!rex_backend_login::hasSession()) {
 			return '';
@@ -467,7 +477,7 @@ class VTrans
 		if (null !== $classification['status']) {
 			$details .= ', HTTP ' . $classification['status'];
 		}
-		$message = $label . ' (' . $details . '): ' . $e->getMessage();
+		$message = $label . ' (' . $details . '): ' . $safeMessage;
 
 		if ('html' === $format) {
 			return "\n" . '<div class="vtrans-error" style="margin:.5em 0;padding:.5em .75em;border-left:3px solid #c00;background:#fff4f4;color:#900;font:12px/1.4 monospace;white-space:pre-wrap">'

@@ -68,6 +68,47 @@ final class VTransError
 	];
 
 	/**
+	 * Patterns that strip credentials out of a provider message.
+	 *
+	 * Guzzle puts the full request URI into its exception message, and two
+	 * providers pass the API key as a query parameter (Google Basic v2,
+	 * MyMemory) — so the raw message carries the secret. The providers already
+	 * redact their `_debug` payload; this closes the same hole on the message
+	 * path, which ends up in the `data` column, the system log and the
+	 * backend-user notice.
+	 *
+	 * @var array<string, string>
+	 */
+	private const REDACTIONS = [
+		// Query parameters: ?key=… &api_key=… &auth_key=… &access_token=…
+		'/([?&](?:key|api[-_]?key|auth[-_]?key|access[-_]?token|token|subscription[-_]?key|password)=)[^&\s"\'`<>\]]+/i' => '$1***',
+		// Authorization header values echoed into messages.
+		'/(Bearer\s+)[A-Za-z0-9._\-]{8,}/i' => '$1***',
+		'/(DeepL-Auth-Key\s+)\S+/i' => '$1***',
+		'/(X-Amz-Security-Token[=:]\s*)[^&\s"\'`<>\]]+/i' => '$1***',
+		'/(X-Amz-Credential=)[^&\s"\'`<>\]]+/i' => '$1***',
+		// MyMemory takes the account e-mail as `de=`; not a secret, but PII.
+		'/([?&]de=)[^&\s"\'`<>\]]+/i' => '$1***',
+	];
+
+	/**
+	 * Remove credentials from a provider message before it is stored, logged
+	 * or shown.
+	 *
+	 * Best-effort by design: it targets the shapes the bundled providers
+	 * actually produce. Never rely on it alone for a value that must not leak —
+	 * prefer not putting the raw message in front of the user at all.
+	 */
+	public static function redact(string $message): string
+	{
+		foreach (self::REDACTIONS as $pattern => $replacement) {
+			$message = preg_replace($pattern, $replacement, $message) ?? $message;
+		}
+
+		return $message;
+	}
+
+	/**
 	 * @return array{type: string, status: int|null}
 	 */
 	public static function classify(Throwable $e): array

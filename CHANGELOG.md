@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Request option `throwOnError` to override the context-dependent error behaviour in both directions.
 - `getLastResultMeta()` now reports `failed`, `error`, `errorType` and `httpStatus` for failed calls.
 
+### Security
+- Provider error messages are redacted before they are stored, logged or displayed. Guzzle embeds the full request URI in its exception messages, and Google Translate Basic v2 and MyMemory pass the API key as a query parameter — the key therefore reached the `data` column, which is readable on the Data page by every user holding `vtrans[]`, while the API keys themselves live on the admin-only Connections page.
+
 ### Changed
 - A failed provider call no longer produces a Whoops page in the frontend. `translate()` returns the untranslated source text, logs the exception to the REDAXO system log, and shows the message only to signed-in backend users. Backend and CLI keep throwing as before ([#7](https://github.com/FriendsOfREDAXO/vtrans/issues/7)).
 - Updated Guzzle to 7.15.3 for the security fixes in 7.15.1 and 7.15.2.
