@@ -84,6 +84,7 @@ vtrans_remaining = Remaining
 vtrans_rate_limit_reset = Reset
 vtrans_error = API error
 vtrans_error_raw_data_title = Raw data of the failed request
+vtrans_frontend_error = vTrans error, only visible to signed-in backend users
 vtrans_no_connections = No connections are configured.
 vtrans_usage_chars = Characters
 vtrans_usage_prefix = Usage

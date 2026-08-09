@@ -188,6 +188,41 @@ Supported request options include:
 - `customInstructions`: array or multiline string with additional instructions
 - `debug`: enables provider debug data
 - `cache`: boolean (`true` by default). With `false`, DB cache lookup and persistence are skipped.
+- `throwOnError`: boolean. Overrides the default error behaviour (see below).
+
+## Error Behaviour
+
+When a provider call fails — exhausted quota, timeout, wrong API key — the behaviour depends on the context:
+
+- **Frontend:** no exception is thrown. `translate()` returns the **untranslated source text** so the page stays readable. The error is written to the REDAXO system log (`System > Log`).
+- **Backend and CLI:** the exception propagates as before, so the Playground still displays it unchanged.
+
+`throwOnError` overrides this in both directions:
+
+```php
+// Throw in the frontend anyway
+VTrans::translate($text, 'de', 'en', 'text', null, ['throwOnError' => true]);
+
+// Fail silently in the backend and get the source text back
+VTrans::translate($text, 'de', 'en', 'text', null, ['throwOnError' => false]);
+```
+
+`getLastResultMeta()` tells you whether the last call succeeded:
+
+```php
+$meta = VTrans::getLastResultMeta();
+if (!empty($meta['failed'])) {
+    // $meta['errorType']  => quota | auth | timeout | other
+    // $meta['httpStatus'] => e.g. 456 (DeepL) or 429, when it can be determined
+    // $meta['error']      => the provider's message
+}
+```
+
+The `errorType` is also stored in the record's `data` column and is therefore visible on the `Data` page. `quota` means the contingent or rate limit was reached — a later attempt may succeed. `auth` means the connection's credentials were rejected.
+
+### Notice for signed-in backend users
+
+If a backend user is signed in in the same browser, the error message is additionally rendered in the frontend — as a small block after the content for `format = 'html'`, as an appended `[…]` hint for `format = 'text'`. Regular visitors see none of it, only the untranslated text.
 
 ## Simple Template Example
 

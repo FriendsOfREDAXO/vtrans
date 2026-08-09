@@ -187,6 +187,41 @@ Unterstützte Request-Optionen sind unter anderem:
 - `customInstructions`: Array oder mehrzeiliger String mit zusätzlichen Vorgaben
 - `debug`: aktiviert Debug-Daten des Providers
 - `cache`: boolean (`true` als Standard). Mit `false` wird DB-Cache-Lookup und Persistierung übersprungen.
+- `throwOnError`: boolean. Überschreibt das Standardverhalten im Fehlerfall (siehe unten).
+
+## Verhalten im Fehlerfall
+
+Schlägt ein Provider-Abruf fehl — aufgebrauchtes Kontingent, Timeout, falscher API-Key —, hängt das Verhalten vom Kontext ab:
+
+- **Frontend:** Es wird keine Exception geworfen. `translate()` gibt den **unübersetzten Originaltext** zurück, damit die Seite lesbar bleibt. Der Fehler landet im REDAXO-Systemlog (`System > Log`).
+- **Backend und CLI:** Die Exception wird wie bisher durchgereicht, der Playground zeigt sie also unverändert an.
+
+Mit `throwOnError` lässt sich das in beide Richtungen umdrehen:
+
+```php
+// Im Frontend trotzdem eine Exception werfen
+VTrans::translate($text, 'de', 'en', 'text', null, ['throwOnError' => true]);
+
+// Im Backend still scheitern und den Originaltext zurückbekommen
+VTrans::translate($text, 'de', 'en', 'text', null, ['throwOnError' => false]);
+```
+
+Ob der letzte Abruf erfolgreich war, verrät `getLastResultMeta()`:
+
+```php
+$meta = VTrans::getLastResultMeta();
+if (!empty($meta['failed'])) {
+    // $meta['errorType']  => quota | auth | timeout | other
+    // $meta['httpStatus'] => z. B. 456 (DeepL) oder 429, sofern ermittelbar
+    // $meta['error']      => Meldung des Providers
+}
+```
+
+Der `errorType` wird zusätzlich in der `data`-Spalte des Datensatzes abgelegt und ist damit auf der Seite `Daten` sichtbar. `quota` bedeutet: Kontingent oder Rate-Limit erreicht — ein späterer Versuch kann klappen. `auth` heißt, dass die Zugangsdaten der Connection nicht akzeptiert wurden.
+
+### Hinweis für angemeldete Backend-User
+
+Ist im selben Browser ein Backend-User angemeldet, wird die Fehlermeldung im Frontend zusätzlich ausgegeben — bei `format = 'html'` als kleiner Block hinter dem Inhalt, bei `format = 'text'` als angehängter `[…]`-Hinweis. Normale Besucher sehen davon nichts, sondern nur den unübersetzten Text.
 
 ## Einfaches Template Beispiel
 

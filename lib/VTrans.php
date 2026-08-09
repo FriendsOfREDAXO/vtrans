@@ -13,7 +13,10 @@ use FriendsOfRedaxo\VTrans\Provider\VTransOpenAIProvider;
 use Throwable;
 use rex;
 use rex_addon;
+use rex_backend_login;
 use rex_exception;
+use rex_i18n;
+use rex_logger;
 use rex_sql;
 
 /**
@@ -176,17 +179,18 @@ class VTrans
 				return $translation;
 			} catch (Throwable $e) {
 				$durationMs = (int) round((microtime(true) - $mstart) * 1000);
-				$errorData = [
-					'status' => 'error',
-					'error' => $e->getMessage(),
-					'errorClass' => get_class($e),
-				];
-				$providerDebug = $provider->getLastDebugData();
-				if ([] !== $providerDebug) {
-					$errorData['_debug'] = $providerDebug;
-				}
-				self::updateEntryError($pendingId, $durationMs, $errorData);
-				throw $e;
+
+				return self::handleProviderError($e, $provider, $pendingId, $durationMs, $text, $format, $requestOptions, [
+					'connection' => self::normalizeStringValue($connectionData['key'] ?? null),
+					'api' => $api,
+					'entryKey' => $entryKey,
+					'hash' => $hash,
+					'sourceLang' => $srcLang,
+					'targetLang' => $targetLang,
+					'contentLength' => $contentLength,
+					'cache' => false,
+					'cacheMode' => 'no-cache',
+				]);
 			}
 		}
 
@@ -342,18 +346,138 @@ class VTrans
 			return $translatedText;
 		} catch (Throwable $e) {
 			$durationMs = (int) round((microtime(true) - $mstart) * 1000);
-			$errorData = [
-				'status' => 'error',
-				'error' => $e->getMessage(),
-				'errorClass' => get_class($e),
-			];
-			$providerDebug = $provider->getLastDebugData();
-			if ([] !== $providerDebug) {
-				$errorData['_debug'] = $providerDebug;
-			}
-			self::updateEntryError($pendingId, $durationMs, $errorData);
+
+			return self::handleProviderError($e, $provider, $pendingId, $durationMs, $text, $format, $requestOptions, [
+				'connection' => self::normalizeStringValue($connectionData['key'] ?? null),
+				'api' => $api,
+				'entryKey' => $entryKey,
+				'hash' => $hash,
+				'sourceLang' => $srcLang,
+				'targetLang' => $targetLang,
+				'contentLength' => $contentLength,
+			]);
+		}
+	}
+
+	/**
+	 * Handle a failed provider call.
+	 *
+	 * The error is always classified and written to the entry's data column.
+	 * Whether it is rethrown depends on {@see shouldThrowOnError()}: in the
+	 * backend the exception keeps bubbling up as before, in the frontend it is
+	 * logged and the untranslated source text is returned so a spent quota
+	 * cannot take a page down (issue #7).
+	 *
+	 * @param array<string, mixed> $requestOptions
+	 * @param array<string, mixed> $metaContext
+	 */
+	private static function handleProviderError(
+		Throwable $e,
+		VTransProviderInterface $provider,
+		int $entryId,
+		int $durationMs,
+		string $originalText,
+		string $format,
+		array $requestOptions,
+		array $metaContext,
+	): string {
+		$classification = VTransError::classify($e);
+
+		$errorData = [
+			'status' => 'error',
+			'error' => $e->getMessage(),
+			'errorClass' => get_class($e),
+			'errorType' => $classification['type'],
+			'httpStatus' => $classification['status'],
+		];
+		$providerDebug = $provider->getLastDebugData();
+		if ([] !== $providerDebug) {
+			$errorData['_debug'] = $providerDebug;
+		}
+		self::updateEntryError($entryId, $durationMs, $errorData);
+
+		if (self::shouldThrowOnError($requestOptions)) {
 			throw $e;
 		}
+
+		// Frontend: keep the exception out of the page but not out of the log.
+		rex_logger::logException($e);
+
+		self::setLastResultMeta(
+			$entryId,
+			false,
+			self::normalizeStringValue($metaContext['connection'] ?? null),
+			self::normalizeStringValue($metaContext['api'] ?? null),
+			isset($metaContext['entryKey']) && is_string($metaContext['entryKey']) ? $metaContext['entryKey'] : null,
+			[
+				'hash' => $metaContext['hash'] ?? null,
+				'sourceLang' => $metaContext['sourceLang'] ?? null,
+				'targetLang' => $metaContext['targetLang'] ?? null,
+				'format' => $format,
+				'contentLength' => self::normalizeIntValue($metaContext['contentLength'] ?? 0, 0),
+				'durationMs' => $durationMs,
+				'cache' => $metaContext['cache'] ?? true,
+				'cacheMode' => $metaContext['cacheMode'] ?? 'default',
+				'failed' => true,
+				'error' => $e->getMessage(),
+				'errorType' => $classification['type'],
+				'httpStatus' => $classification['status'],
+			]
+		);
+		self::setLastResultData(self::normalizeResultData($errorData));
+
+		return $originalText . self::buildBackendUserNotice($e, $classification, $format);
+	}
+
+	/**
+	 * Decide whether a provider error should bubble up to the caller.
+	 *
+	 * Backend and CLI keep the previous behaviour so the Playground can still
+	 * render the error; the frontend swallows it. An explicit `throwOnError`
+	 * request option overrides both directions.
+	 *
+	 * @param array<string, mixed> $requestOptions
+	 */
+	private static function shouldThrowOnError(array $requestOptions): bool
+	{
+		if (array_key_exists('throwOnError', $requestOptions)) {
+			return self::normalizeBoolOption($requestOptions['throwOnError'], true);
+		}
+
+		return !rex::isFrontend();
+	}
+
+	/**
+	 * Render the error for a signed-in backend user.
+	 *
+	 * Visitors get the untranslated text and nothing else; anyone with a
+	 * backend session additionally sees what went wrong, so a silent fallback
+	 * does not go unnoticed. Returns an empty string for everyone else.
+	 *
+	 * @param array{type: string, status: int|null} $classification
+	 */
+	private static function buildBackendUserNotice(Throwable $e, array $classification, string $format): string
+	{
+		if (!rex_backend_login::hasSession()) {
+			return '';
+		}
+
+		$label = rex_i18n::msg('vtrans_frontend_error');
+		$details = $classification['type'];
+		if (null !== $classification['status']) {
+			$details .= ', HTTP ' . $classification['status'];
+		}
+		$message = $label . ' (' . $details . '): ' . $e->getMessage();
+
+		if ('html' === $format) {
+			return "\n" . '<div class="vtrans-error" style="margin:.5em 0;padding:.5em .75em;border-left:3px solid #c00;background:#fff4f4;color:#900;font:12px/1.4 monospace;white-space:pre-wrap">'
+				. rex_escape($message)
+				. '</div>';
+		}
+
+		// Plain text may end up inside an attribute or a <title>, so strip
+		// anything that could break out of it.
+		return ' [' . str_replace(['"', "'", '<', '>', "\r", "\n"], ['', '', '', '', ' ', ' '], $message) . ']';
 	}
 
 	/**
