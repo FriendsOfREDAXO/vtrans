@@ -105,6 +105,7 @@ vtrans_data_retry = im Playground öffnen
 vtrans_data_delete_confirm = Wirklich löschen?
 vtrans_data_delete_batch_confirm = Wirklich alle gefundenen Einträge löschen?
 vtrans_data_delete_invalid = Ungültige ID. Bitte eine Zahl > 0 angeben.
+vtrans_data_delete_stale = Der Datenbestand hat sich geändert, seit die Liste angezeigt wurde. Es wurde nichts gelöscht — bitte erneut prüfen.
 vtrans_data_delete_no_match = Keine passenden Einträge gefunden.
 vtrans_data_delete_success = Einträge gelöscht
 vtrans_data_search = Suche

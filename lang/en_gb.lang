@@ -105,6 +105,7 @@ vtrans_data_retry = open in playground
 vtrans_data_delete_confirm = Delete now?
 vtrans_data_delete_batch_confirm = Delete all currently found entries?
 vtrans_data_delete_invalid = Invalid ID. Please enter a number > 0.
+vtrans_data_delete_stale = The data changed since the list was rendered. Nothing was deleted — please check again.
 vtrans_data_delete_no_match = No matching entries found.
 vtrans_data_delete_success = Entries deleted
 vtrans_data_search = Search

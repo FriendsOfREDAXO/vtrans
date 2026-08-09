@@ -9,6 +9,11 @@ $table = rex::getTable('vtrans');
 $func = rex_get('func', 'string');
 $id = rex_get('id', 'int');
 
+// CSRF protection for every state-changing action on this page: deleting a
+// single entry, the batch delete (whose WHERE comes from the filter params and
+// is empty when no filter is set) and saving an edited translation.
+$csrfToken = rex_csrf_token::factory('vtrans_data');
+
 $normalizeString = static function (mixed $value): string {
     if (is_string($value)) {
         return $value;
@@ -62,12 +67,12 @@ $buildEditUrl = static function (int $entryId): string {
     return rex_url::currentBackendPage(['func' => 'edit', 'id' => $entryId]);
 };
 
-$buildDeleteUrl = static function (string $deleteBy, string $deleteValue): string {
+$buildDeleteUrl = static function (string $deleteBy, string $deleteValue) use ($csrfToken): string {
     return rex_url::currentBackendPage([
         'func' => 'delete',
         'delete_by' => $deleteBy,
         'delete_value' => $deleteValue,
-    ]);
+    ] + $csrfToken->getUrlParams());
 };
 
 $buildPlaygroundUrl = static function (array $params = []): string {
@@ -94,7 +99,7 @@ $normalizeDisplayData = static function (mixed $value) use (&$normalizeDisplayDa
 $isAdmin = null !== rex::getUser() && rex::getUser()->isAdmin();
 
 if ('delete' === $func) {
-    if (!$isAdmin) {
+    if (!$isAdmin || !$csrfToken->isValid()) {
         rex_response::sendRedirect(rex_url::currentBackendPage());
     }
     $deleteBy = rex_get('delete_by', 'string', 'id');
@@ -149,6 +154,8 @@ if ('ok' === $deleteState) {
     echo rex_view::warning($this->i18n('vtrans_data_delete_no_match'));
 } elseif ('invalid' === $deleteState) {
     echo rex_view::error($this->i18n('vtrans_data_delete_invalid'));
+} elseif ('stale' === $deleteState) {
+    echo rex_view::warning($this->i18n('vtrans_data_delete_stale'));
 }
 
 // Detail/edit mode for a single translation entry.
@@ -164,6 +171,11 @@ if ('edit' === $func && $id > 0) {
         $func = '';
     } else {
         if (rex_post('data-save', 'boolean')) {
+            if (!$csrfToken->isValid()) {
+                echo rex_view::error(rex_i18n::msg('csrf_token_invalid'));
+                return;
+            }
+
             $translation = rex_post('translation', 'string', '');
 
             $updateSql = rex_sql::factory();
@@ -294,7 +306,7 @@ if ('edit' === $func && $id > 0) {
         $fragment->setVar('buttons', $buttons, false);
         $content = $fragment->parse('core/page/section.php');
 
-        echo '<form action="' . rex_url::currentBackendPage(['func' => 'edit', 'id' => $id]) . '" method="post">' . $content . '</form>';
+        echo '<form action="' . rex_url::currentBackendPage(['func' => 'edit', 'id' => $id]) . '" method="post">' . $csrfToken->getHiddenField() . $content . '</form>';
         return;
     }
 }
@@ -447,12 +459,25 @@ if (null !== $periodStart && null !== $periodEnd) {
 $whereSql = [] !== $whereParts ? ' WHERE ' . implode(' AND ', $whereParts) : '';
 
 if ($isAdmin && rex_post('data-delete-batch', 'boolean')) {
+    if (!$csrfToken->isValid()) {
+        echo rex_view::error(rex_i18n::msg('csrf_token_invalid'));
+        return;
+    }
+
     $countSql = rex_sql::factory();
     $countSql->setQuery('SELECT COUNT(*) AS cnt FROM ' . $table . $whereSql);
     $count = (int) $countSql->getValue('cnt');
 
     if ($count <= 0) {
         rex_response::sendRedirect(rex_url::currentBackendPage(array_merge($currentFilterParams, ['delete_state' => 'none'])));
+    }
+
+    // The submitted count is what the user actually saw on the button. Without
+    // a filter $whereSql is empty and this deletes everything, so refuse when
+    // the table no longer matches what was displayed.
+    $expectedCount = rex_post('data-delete-expected', 'int', -1);
+    if ($expectedCount !== $count) {
+        rex_response::sendRedirect(rex_url::currentBackendPage(array_merge($currentFilterParams, ['delete_state' => 'stale'])));
     }
 
     rex_sql::factory()->setQuery('DELETE FROM ' . $table . $whereSql);
@@ -852,6 +877,8 @@ if ($isAdmin && $entryCount > 0) {
 	$batchDeleteLabel = str_replace('%s', (string) $entryCount, $this->i18n($batchDeleteLabelKey));
 
     $headerOptions .= '<form action="' . rex_url::currentBackendPage() . '" method="post" style="display:inline-block;margin:0">';
+    $headerOptions .= $csrfToken->getHiddenField();
+    $headerOptions .= '<input type="hidden" name="data-delete-expected" value="' . $entryCount . '">';
     foreach ($currentFilterParams as $paramKey => $paramValue) {
         $headerOptions .= '<input type="hidden" name="' . rex_escape($paramKey) . '" value="' . rex_escape((string) $paramValue) . '">';
     }

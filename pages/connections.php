@@ -9,6 +9,21 @@ $func = rex_request('func', 'string', '');
 $id = rex_request('id', 'int', 0);
 $messages = [];
 
+// CSRF protection for every state-changing action on this page. Without it a
+// forged request could repoint api_url of a connection at a foreign host and
+// thereby exfiltrate every following translation request including the key.
+$csrfToken = rex_csrf_token::factory('vtrans_connections');
+
+$stateChangingFuncs = ['set_default', 'toggle_playground', 'move_up', 'move_down', 'delete'];
+$isFormSubmit = rex_post('connection-submit', 'boolean') || rex_post('connection-apply', 'boolean');
+
+if ((in_array($func, $stateChangingFuncs, true) || $isFormSubmit) && !$csrfToken->isValid()) {
+    echo rex_view::error(rex_i18n::msg('csrf_token_invalid'));
+    $func = '';
+    $id = 0;
+    $isFormSubmit = false;
+}
+
 $normalizeString = static function (mixed $value): string {
     return is_scalar($value) ? (string) $value : '';
 };
@@ -81,7 +96,7 @@ if ('delete' === $func && $id > 0) {
 }
 
 // Handle save.
-if (rex_post('connection-submit', 'boolean') || rex_post('connection-apply', 'boolean')) {
+if ($isFormSubmit) {
     $postProvider = rex_post('provider', 'string', '');
     $postKey = rex_post('connection_key', 'string', '');
     $postLabel = rex_post('label', 'string', '');
@@ -382,7 +397,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $content = $fragment->parse('core/page/section.php');
 
         $formAction = rex_url::currentBackendPage(['func' => $func] + ($id > 0 ? ['id' => $id] : []));
-        echo '<form action="' . $formAction . '" method="post">' . $content . '</form>';
+        echo '<form action="' . $formAction . '" method="post">' . $csrfToken->getHiddenField() . $content . '</form>';
     }
 } else {
     // --- Connection list ---
@@ -413,8 +428,8 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
 
         foreach ($connections as $connection) {
             $editUrl = rex_url::currentBackendPage(['func' => 'edit', 'id' => $connection->getId()]);
-            $deleteUrl = rex_url::currentBackendPage(['func' => 'delete', 'id' => $connection->getId()]);
-            $togglePlaygroundUrl = rex_url::currentBackendPage(['func' => 'toggle_playground', 'id' => $connection->getId()]);
+            $deleteUrl = rex_url::currentBackendPage(['func' => 'delete', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
+            $togglePlaygroundUrl = rex_url::currentBackendPage(['func' => 'toggle_playground', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
 
             $iconClass = 'rex-icon fa-plug';
 
@@ -422,7 +437,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
             if ($connection->isDefault()) {
                 $defaultToggle = '<i class="fa fa-dot-circle-o text-success" title="' . rex_escape($this->i18n('vtrans_connections_default')) . '"></i>';
             } else {
-                $setDefaultUrl = rex_url::currentBackendPage(['func' => 'set_default', 'id' => $connection->getId()]);
+                $setDefaultUrl = rex_url::currentBackendPage(['func' => 'set_default', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
                 $defaultToggle = '<a href="' . $setDefaultUrl . '" title="' . rex_escape($this->i18n('vtrans_connections_set_default')) . '"><i class="fa fa-circle-o text-muted"></i></a>';
             }
 
@@ -438,8 +453,8 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
             $tableContent .= '<td><a href="' . $editUrl . '">' . rex_escape($connection->getKey()) . '</a></td>';
             $tableContent .= '<td><a href="' . $editUrl . '">' . rex_escape($connection->getLabel()) . '</a></td>';
             $tableContent .= '<td><small>' . rex_escape($connection->getProvider()) . '</small></td>';
-            $moveUpUrl = rex_url::currentBackendPage(['func' => 'move_up', 'id' => $connection->getId()]);
-            $moveDownUrl = rex_url::currentBackendPage(['func' => 'move_down', 'id' => $connection->getId()]);
+            $moveUpUrl = rex_url::currentBackendPage(['func' => 'move_up', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
+            $moveDownUrl = rex_url::currentBackendPage(['func' => 'move_down', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
             $tableContent .= '<td class="rex-table-action" style="white-space:nowrap; text-align:center">' . $defaultToggle . '</td>';
             $tableContent .= '<td class="rex-table-action" style="white-space:nowrap">' . $playgroundToggle . '</td>';
             $tableContent .= '<td class="rex-table-action" style="white-space:nowrap">';

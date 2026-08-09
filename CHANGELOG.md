@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `getLastResultMeta()` now reports `failed`, `error`, `errorType` and `httpStatus` for failed calls.
 
 ### Security
+- CSRF protection on every state-changing backend action. Deleting a record, the batch delete, saving an edited translation, and creating, editing, deleting, reordering or toggling a connection now all require a valid `rex_csrf_token`. Without it, a forged request could have repointed a connection's `api_url` at a foreign host, or wiped the whole translation table — the batch delete builds its `WHERE` from the filter parameters and is unbounded when no filter is set.
+- The batch delete additionally verifies the number of affected rows against the count shown on the button and aborts on mismatch.
 - Provider error messages are redacted before they are stored, logged or displayed. Guzzle embeds the full request URI in its exception messages, and Google Translate Basic v2 and MyMemory pass the API key as a query parameter — the key therefore reached the `data` column, which is readable on the Data page by every user holding `vtrans[]`, while the API keys themselves live on the admin-only Connections page.
 
 ### Changed
