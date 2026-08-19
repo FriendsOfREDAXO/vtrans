@@ -17,6 +17,7 @@ class ComposerStaticInitb7f05da32a0ac63827e00f460d51151f
         'S' => 
         array (
             'Symfony\\Polyfill\\Php80\\' => 23,
+            'Symfony\\Component\\HtmlSanitizer\\' => 32,
         ),
         'P' => 
         array (
@@ -24,6 +25,14 @@ class ComposerStaticInitb7f05da32a0ac63827e00f460d51151f
             'Psr\\Http\\Message\\' => 17,
             'Psr\\Http\\Client\\' => 16,
             'Psr\\Cache\\' => 10,
+        ),
+        'M' => 
+        array (
+            'Masterminds\\' => 12,
+        ),
+        'L' => 
+        array (
+            'League\\Uri\\' => 11,
         ),
         'G' => 
         array (
@@ -44,6 +53,10 @@ class ComposerStaticInitb7f05da32a0ac63827e00f460d51151f
         array (
             0 => __DIR__ . '/..' . '/symfony/polyfill-php80',
         ),
+        'Symfony\\Component\\HtmlSanitizer\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/symfony/html-sanitizer',
+        ),
         'Psr\\Log\\' => 
         array (
             0 => __DIR__ . '/..' . '/psr/log/src',
@@ -60,6 +73,15 @@ class ComposerStaticInitb7f05da32a0ac63827e00f460d51151f
         'Psr\\Cache\\' => 
         array (
             0 => __DIR__ . '/..' . '/psr/cache/src',
+        ),
+        'Masterminds\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/masterminds/html5/src',
+        ),
+        'League\\Uri\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/league/uri',
+            1 => __DIR__ . '/..' . '/league/uri-interfaces',
         ),
         'GuzzleHttp\\Psr7\\' => 
         array (

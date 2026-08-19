@@ -2,6 +2,8 @@
 
 /** @var rex_addon $this */
 
+use FriendsOfRedaxo\VTrans\VTransSanitizer;
+
 // Embedded mode is used when data details are shown inside testing results.
 $isEmbedded = defined('VTRANS_DATA_EMBED') && true === VTRANS_DATA_EMBED;
 
@@ -178,6 +180,19 @@ if ('edit' === $func && $id > 0) {
 
             $translation = rex_post('translation', 'string', '');
 
+            // Editors holding vtrans[] may correct translations, so this value
+            // is not admin-trusted -- and it goes straight into the frontend as
+            // HTML on every cache hit. Sanitise, and say so when something was
+            // removed rather than silently changing what was saved.
+            $wasSanitized = false;
+            if ('html' === strtolower((string) $sql->getValue('format'))) {
+                $sanitized = VTransSanitizer::sanitize($translation);
+                if ($sanitized !== $translation) {
+                    $translation = $sanitized;
+                    $wasSanitized = true;
+                }
+            }
+
             $updateSql = rex_sql::factory();
             $updateSql->setTable($table);
             $updateSql->setWhere(['id' => $id]);
@@ -186,11 +201,17 @@ if ('edit' === $func && $id > 0) {
             $updateSql->setValue('updateuser', rex::getUser() ? rex::getUser()->getLogin() : 'system');
             $updateSql->update();
 
-            rex_response::sendRedirect(rex_url::currentBackendPage(['func' => 'edit', 'id' => $id, 'saved' => 1]));
+            rex_response::sendRedirect(rex_url::currentBackendPage(
+                ['func' => 'edit', 'id' => $id, 'saved' => 1] + ($wasSanitized ? ['sanitized' => 1] : [])
+            ));
         }
 
         if (1 === rex_get('saved', 'int')) {
             echo rex_view::success($this->i18n('vtrans_data_saved'));
+        }
+
+        if (1 === rex_get('sanitized', 'int')) {
+            echo rex_view::warning($this->i18n('vtrans_data_sanitized'));
         }
 
         $row = [];

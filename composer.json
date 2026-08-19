@@ -9,6 +9,12 @@
         "guzzlehttp/guzzle": "^7.12.3",
         "google/auth": "^1.39",
         "guzzlehttp/promises": "^2.5",
-        "guzzlehttp/psr7": "^2.12.3"
+        "guzzlehttp/psr7": "^2.12.3",
+        "symfony/html-sanitizer": "^7.0"
+    },
+    "config": {
+        "platform": {
+            "php": "8.2.0"
+        }
     }
 }

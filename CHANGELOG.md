@@ -5,14 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+The `0.9.x` releases are the beta series leading up to the first production release `1.0.0`.
+Until then, breaking changes may still occur between minor releases.
+
+## [0.9.1-beta] - 2026-08-19
 
 ### Added
+- Dependency `symfony/html-sanitizer` (pinned to the 7.x line, which supports PHP 8.2; 8.x requires PHP 8.4). `config.platform.php` is set to `8.2.0` so Composer resolves against the addon's declared minimum instead of the developer's local PHP version.
 - Provider errors are classified as `quota`, `auth`, `timeout` or `other` and stored with the HTTP status in the record's `data` column.
 - Request option `throwOnError` to override the context-dependent error behaviour in both directions.
 - `getLastResultMeta()` now reports `failed`, `error`, `errorType` and `httpStatus` for failed calls.
 
 ### Security
+- Untrusted HTML is sanitised before it is stored. Both the provider's answer and a translation edited on the Data page (open to `vtrans[]`, a permission that does not imply the right to publish HTML) are rendered as HTML in the frontend on every cache hit. Scripting, event attributes, frames, forms and `javascript:` URLs are removed via `symfony/html-sanitizer`; links, images, classes and inline styles are kept. The author's own `<script>`/`<style>` blocks are restored after sanitisation and stay untouched.
 - CSRF protection on every state-changing backend action. Deleting a record, the batch delete, saving an edited translation, and creating, editing, deleting, reordering or toggling a connection now all require a valid `rex_csrf_token`. Without it, a forged request could have repointed a connection's `api_url` at a foreign host, or wiped the whole translation table — the batch delete builds its `WHERE` from the filter parameters and is unbounded when no filter is set.
 - The batch delete additionally verifies the number of affected rows against the count shown on the button and aborts on mismatch.
 - Provider error messages are redacted before they are stored, logged or displayed. Guzzle embeds the full request URI in its exception messages, and Google Translate Basic v2 and MyMemory pass the API key as a query parameter — the key therefore reached the `data` column, which is readable on the Data page by every user holding `vtrans[]`, while the API keys themselves live on the admin-only Connections page.
@@ -47,9 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Streamlined install script — removed obsolete index migration code.
 - Cleaned up all provider classes with modern PHP idioms.
 
-## [Unreleased]
-
-### Changed
+### Feature set of the initial release
 
 - Multi-provider translation service with support for DeepL (Free/Pro), Google Translate (Basic v2 and v3), LibreTranslate, and OpenAI APIs.
 - New backend pages for managing connections, testing translations in the Playground, and reviewing stored translation data.

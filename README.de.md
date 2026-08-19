@@ -333,6 +333,25 @@ Beim Format `html` läuft automatisch ein provider-unabhängiger HTML-Filter, de
 </div>
 ```
 
+### Bereinigung des Ergebnisses
+
+Alles, was in der Spalte `translation` landet, wird beim Schreiben bereinigt — denn keine der
+beiden Quellen ist admin-vertrauenswürdig: die Antwort des Providers, und das Bearbeitungs-
+formular auf der Seite `Daten`, das jedem User mit der Berechtigung `vtrans[]` offensteht.
+
+Entfernt werden `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `<link>`,
+`<meta>`, sämtliche `on*`-Event-Attribute sowie `javascript:`- und `data:`-URLs. Normales
+Artikel-Markup bleibt erhalten: Links, Bilder, `srcset`, `class`, `id`, Inline-`style`,
+`title`, `lang`, `dir`, Tabellen und Listen.
+
+Eigene `<script>`- und `<style>`-Blöcke sind **nicht** betroffen. Der HTML-Filter nimmt sie
+vor dem API-Aufruf heraus und setzt sie danach wieder ein — also nach der Bereinigung —,
+sie laufen also nie durch sie hindurch. Bereinigt wird beim Schreiben, nie beim Lesen:
+ein gecachter Datensatz wird unverändert zurückgegeben.
+
+> Datensätze aus der Zeit vor dieser Version wurden unbereinigt gespeichert. Wurde damals
+> eine Übersetzung manuell bearbeitet, lohnt sich ein Blick darauf.
+
 ### Automatisch ausgeschlossene Tags
 
 - `<script>…</script>`

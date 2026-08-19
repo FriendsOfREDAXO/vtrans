@@ -334,6 +334,25 @@ When using the `html` format, a provider-independent HTML filter automatically p
 </div>
 ```
 
+### Sanitisation of the result
+
+Everything that is stored in the `translation` column is sanitised on the way in, because
+neither source is admin-trusted: the provider's answer, and the edit form on the `Data` page,
+which is open to every user holding the `vtrans[]` permission.
+
+Removed are `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `<link>`,
+`<meta>`, all `on*` event attributes and `javascript:` / `data:` URLs. Ordinary article markup
+is kept: links, images, `srcset`, `class`, `id`, inline `style`, `title`, `lang`, `dir`,
+tables and lists.
+
+Your own `<script>` and `<style>` blocks are **not** affected. They are removed by the HTML
+filter before the API call and restored afterwards — that is, after sanitisation — so they
+never pass through it. Sanitisation happens on write, never on read: a cached record is
+returned unchanged.
+
+> Records written before this version were stored unsanitised. If a translation was edited
+> manually back then, it is worth reviewing it.
+
 ### Automatically excluded tags
 
 - `<script>…</script>`

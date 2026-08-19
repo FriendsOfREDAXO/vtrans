@@ -96,6 +96,7 @@ vtrans_chars_exceeded = Zeichenlimit überschritten!
 vtrans_data_title = Daten
 vtrans_data_detail_title = Daten Details
 vtrans_data_saved = Datensatz wurde gespeichert
+vtrans_data_sanitized = Aus der Ausgabe wurden nicht erlaubte HTML-Bestandteile entfernt (z. B. Scripte, Event-Attribute oder eingebettete Frames). Gespeichert wurde die bereinigte Fassung.
 vtrans_data_back_to_list = Zur Liste
 vtrans_data_not_found = Der Eintrag wurde nicht gefunden.
 vtrans_data_delete = löschen

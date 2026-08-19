@@ -151,7 +151,10 @@ class VTrans
 
 				$translation = $result->getTranslation();
 				if (null !== $htmlFilter) {
-					$translation = $htmlFilter->restore($translation);
+					// Sanitise the provider's answer before the author's own
+					// excluded blocks are put back — those are trusted and must
+					// not be stripped, so they are restored afterwards.
+					$translation = $htmlFilter->restore(VTransSanitizer::sanitize($translation));
 				}
 
 				self::completeEntry($pendingId, $translation, $durationMs, $result->getData(), $payloadLength);
@@ -320,7 +323,8 @@ class VTrans
 
 			$translatedText = $result->getTranslation();
 			if (null !== $htmlFilter) {
-				$translatedText = $htmlFilter->restore($translatedText);
+				// See above: sanitise first, restore the trusted blocks after.
+				$translatedText = $htmlFilter->restore(VTransSanitizer::sanitize($translatedText));
 			}
 
 			self::completeEntry($pendingId, $translatedText, $durationMs, $result->getData(), $payloadLength);

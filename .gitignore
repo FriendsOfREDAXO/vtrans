@@ -5,3 +5,8 @@
 .claude/
 AGENTS.md
 CLAUDE.md
+vtrans.code-workspace
+
+# Internal audit notes — never ship or publish
+AUDIT-*.md
+SECURITY-AUDIT.md

@@ -96,6 +96,7 @@ vtrans_chars_exceeded = Character limit exceeded!
 vtrans_data_title = Data
 vtrans_data_detail_title = Record details
 vtrans_data_saved = Record has been saved
+vtrans_data_sanitized = Disallowed HTML was removed from the output (for example scripts, event attributes or embedded frames). The cleaned version was saved.
 vtrans_data_back_to_list = Back to list
 vtrans_data_not_found = The entry was not found.
 vtrans_data_delete = delete
