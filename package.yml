@@ -1,5 +1,5 @@
 package: vtrans
-version: '0.9.1-beta'
+version: '1.0.0-beta'
 name: vTrans
 author: Friends Of REDAXO | Matthias Weiss | VIEWSION.net (https://github.com/VIEWSION)
 supportpage: https://github.com/FriendsOfREDAXO/vtrans
@@ -50,4 +50,10 @@ installer_ignore:
     - .DS_Store
     - composer.json
     - composer.lock
+    - AUDIT-2026-08-09.md
+    - SECURITY-AUDIT.md
+    - CLAUDE.md
+    - AGENTS.md
+    - .claude
+    - vtrans.code-workspace
 

@@ -5,8 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The `0.9.x` releases are the beta series leading up to the first production release `1.0.0`.
-Until then, breaking changes may still occur between minor releases.
+`1.0.0-beta` is the release candidate for the first production release `1.0.0`.
+Breaking changes may still occur until `1.0.0` is tagged.
+
+## [1.0.0-beta] - 2026-08-22
+
+Release candidate for the first production version. It repairs the update path, makes
+`max_chars` and the keyed-record identity work as documented, widens the storage columns
+and fixes two display-level defects.
+
+**This release is the baseline for the schema.** Database changes from here on will ship
+with a migration; earlier records are not migrated.
+
+### Added
+- `max_chars` is finally applied. The value was computed and never read, so the documented limit did not exist. It is now advisory: exceeding it writes a line to the REDAXO system log (once per connection and request) and the request still goes out, because rejecting would break every site whose articles are simply longer than the configured value.
+
+### Fixed
+- A keyed record is now identified by key, **source language**, target language, connection and **format**. Previously the lookup ignored source and format, so the same key handed back HTML markup in a text context or a translation made from a different source language. The unique index was widened accordingly.
+- **Schema changes now reach existing installations.** REDAXO runs `update.php` — not `install.php` — when an already installed addon is updated through the installer, and `update.php` was empty. Every schema change since the first release therefore only ever applied to fresh installs or to a manual reinstall. `update.php` now runs the idempotent schema definition from `install.php`.
+- Search on the Data page escaped `%` and `_` in the wrong order, which doubled the escape character it had just inserted and left the wildcard active — searching for a literal `%` returned wrong rows. No injection was possible; values were still quoted.
+- The status of a failed record is escaped before output.
+
+### Changed
+- `text` and `translation` are now `MEDIUMTEXT` instead of `TEXT`. `TEXT` holds 64 KB, so a longer HTML article was truncated on write and the stored `hash` no longer matched the stored `text`, leaving the cache entry permanently inconsistent.
+- `installer_ignore` excludes internal notes and editor files, so they cannot end up in an installer package built from a working copy.
+
+### Removed
+- Dead assignment in the `vtrans_agent` → `vtrans_connection` migration.
 
 ## [0.9.1-beta] - 2026-08-19
 

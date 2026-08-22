@@ -18,7 +18,6 @@ try {
 // Migrate: rename table vtrans_agent → vtrans_connection.
 try {
     $migSql = rex_sql::factory();
-    $tables = array_column($migSql->getArray('SHOW TABLES LIKE \'' . rex::getTablePrefix() . 'vtrans_agent\''), 'Tables_in_' . rex::getTablePrefix() . 'vtrans_agent');
     if (!empty($migSql->getArray('SHOW TABLES LIKE \'' . rex::getTablePrefix() . 'vtrans_agent\''))) {
         $migSql->setQuery('RENAME TABLE ' . rex::getTable('vtrans_agent') . ' TO ' . rex::getTable('vtrans_connection'));
     }
@@ -91,10 +90,10 @@ rex_sql_table::get(rex::getTable('vtrans'))
     ->ensureColumn(new rex_sql_column('source', 'varchar(8)', true, null))
     ->ensureColumn(new rex_sql_column('target', 'varchar(8)', true, null))
     ->ensureColumn(new rex_sql_column('format', "ENUM('text', 'html')", false))
-    ->ensureColumn(new rex_sql_column('text', 'text', true, null))
+    ->ensureColumn(new rex_sql_column('text', 'mediumtext', true, null))
     ->ensureColumn(new rex_sql_column('prompt', 'text', true, null))
     ->ensureColumn(new rex_sql_column('custom_instructions', 'text', true, null))
-    ->ensureColumn(new rex_sql_column('translation', 'text', true, null))
+    ->ensureColumn(new rex_sql_column('translation', 'mediumtext', true, null))
     ->ensureColumn(new rex_sql_column('duration_ms', 'int(11)', true, null))
     ->ensureColumn(new rex_sql_column('data', 'text'))
     ->ensureColumn(new rex_sql_column('createdate', 'datetime', false, 'CURRENT_TIMESTAMP'))
@@ -108,7 +107,11 @@ rex_sql_table::get(rex::getTable('vtrans'))
     ->ensureIndex(new rex_sql_index('source', ['source']))
     ->ensureIndex(new rex_sql_index('target', ['target']))
     ->ensureIndex(new rex_sql_index('format', ['format']))
-    ->ensureIndex(new rex_sql_index('key_target_connection_unique', ['key', 'target', 'connection'], rex_sql_index::UNIQUE))
+    // source and format belong in here: a stable key is one record per source
+    // language, target language, connection and format. Without format the same
+    // key returned HTML markup in a text context and vice versa.
+    ->removeIndex('key_target_connection_unique')
+    ->ensureIndex(new rex_sql_index('key_target_conn_src_format_unique', ['key', 'target', 'connection', 'source', 'format'], rex_sql_index::UNIQUE))
     ->ensure();
 
 // Ensure addon data directory exists for storing credentials or other files.

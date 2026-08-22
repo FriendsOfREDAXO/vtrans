@@ -408,7 +408,7 @@ $sqlEscaper = rex_sql::factory();
 $whereParts = [];
 
 if ('' !== trim($search)) {
-    $escapedSearch = str_replace(['%', '_', '\\'], ['\\%', '\\_', '\\\\'], $search);
+    $escapedSearch = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
     $searchParts = [
         '`key` LIKE ' . $sqlEscaper->escape('%' . $escapedSearch . '%'),
         '`text` LIKE ' . $sqlEscaper->escape('%' . $escapedSearch . '%'),
@@ -776,7 +776,7 @@ $list->setColumnFormat('payload_length', 'custom', function () use ($list, $trun
         $data = '' !== $dataString ? json_decode($dataString, true) : null;
         $status = is_array($data) ? $normalizeString($data['status'] ?? '') : '';
         $error = is_array($data) ? $normalizeString($data['error'] ?? '') : '';
-        $htmlText = '<div class="vtrans-tcont text-warning" style="opacity:1"><i class="fa fa-warning text-danger"></i> ' . strtoupper($status) . ': ' . rex_escape($truncate($error, 100)) . '</div>';
+        $htmlText = '<div class="vtrans-tcont text-warning" style="opacity:1"><i class="fa fa-warning text-danger"></i> ' . rex_escape(strtoupper($status)) . ': ' . rex_escape($truncate($error, 100)) . '</div>';
     } else {
         if ('html' === (string) $list->getValue('format')) {
             $htmlText = strip_tags($htmlText, '<h1><h2><h3><h4><h5><h6><p><br>');

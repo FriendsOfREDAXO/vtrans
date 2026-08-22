@@ -51,6 +51,11 @@ class VTrans
 	private static array $lastResultMeta = [];
 	/** @var array<string, mixed> */
 	private static array $lastResultData = [];
+	/**
+	 * Guard against flooding the log with one max_chars line per chunk.
+	 * @var array<string, true>
+	 */
+	private static array $maxCharsWarned = [];
 
 	/**
 	 * @param array<string, mixed> $requestOptions
@@ -122,8 +127,18 @@ class VTrans
 			$providerText = $htmlFilter->prepare($text);
 		}
 
+		// max_chars is advisory: the call goes out either way, but an overrun is
+		// recorded so the cost is traceable afterwards. Rejecting would break
+		// existing sites whose articles are simply longer than the limit.
+		$payloadLength = mb_strlen($providerText);
+		self::warnOnMaxCharsExceeded(
+			$payloadLength,
+			$connectionMaxChars,
+			self::normalizeStringValue($connectionData['key'] ?? null),
+			$entryKey
+		);
+
 		if (!$cacheEnabled) {
-			$payloadLength = mb_strlen($providerText);
 			$pendingData = self::buildPendingData(
 				$api, self::normalizeStringValue($connectionData['key'] ?? null), $srcLang, $targetLang, $format,
 				$debugEnabled, self::normalizeIntValue($connectionConfig['timeout'] ?? null, self::GLOBAL_TIMEOUT),
@@ -133,7 +148,7 @@ class VTrans
 			// When a key is provided, look up any existing row so storePendingEntry
 			// can UPDATE it instead of INSERTing (avoids duplicate-key violation).
 			$existingNoCacheEntry = null !== $entryKey
-				? self::findEntryByKey($entryKey, self::normalizeStringValue($connectionData['key'] ?? null), $targetLang)
+				? self::findEntryByKey($entryKey, self::normalizeStringValue($connectionData['key'] ?? null), $targetLang, $srcLang, $format)
 				: null;
 			$existingNoCacheId = null !== $existingNoCacheEntry ? self::normalizeIntValue($existingNoCacheEntry['id'] ?? 0, 0) : null;
 			$pendingId = self::storePendingEntry(
@@ -199,7 +214,7 @@ class VTrans
 
 		$existingEntry = null;
 		if (null !== $entryKey) {
-			$existingEntry = self::findEntryByKey($entryKey, self::normalizeStringValue($connectionData['key'] ?? null), $targetLang);
+			$existingEntry = self::findEntryByKey($entryKey, self::normalizeStringValue($connectionData['key'] ?? null), $targetLang, $srcLang, $format);
 			// Only treat as cache hit if the entry has a completed translation.
 			$existingEntryHash = self::normalizeStringValue($existingEntry['hash'] ?? null);
 			$existingEntryTranslation = $existingEntry['translation'] ?? null;
@@ -300,7 +315,6 @@ class VTrans
 		}
 
 		// Create pending DB entry before sending to the provider.
-		$payloadLength = mb_strlen($providerText);
 		$pendingData = self::buildPendingData(
 			$api, self::normalizeStringValue($connectionData['key'] ?? null), $srcLang, $targetLang, $format,
 			$debugEnabled, self::normalizeIntValue($connectionConfig['timeout'] ?? null, self::GLOBAL_TIMEOUT),
@@ -437,6 +451,41 @@ class VTrans
 		self::setLastResultData(self::normalizeResultData($errorData));
 
 		return $originalText . self::buildBackendUserNotice($safeMessage, $classification, $format);
+	}
+
+	/**
+	 * Record that a request exceeded the connection's character limit.
+	 *
+	 * max_chars is advisory by design: enforcing it would turn a configuration
+	 * value into a hard failure for every site whose articles are longer than
+	 * the limit. Logging keeps the cost visible without breaking the page.
+	 *
+	 * Logged at most once per connection and limit per request — a single HTML
+	 * page can fan out into hundreds of chunk translations, and one line per
+	 * chunk would drown the log.
+	 */
+	private static function warnOnMaxCharsExceeded(int $payloadLength, int $maxChars, string $connectionKey, ?string $entryKey): void
+	{
+		if ($maxChars <= 0 || $payloadLength <= $maxChars) {
+			return;
+		}
+
+		$guard = $connectionKey . '/' . $maxChars;
+		if (isset(self::$maxCharsWarned[$guard])) {
+			return;
+		}
+		self::$maxCharsWarned[$guard] = true;
+
+		rex_logger::factory()->log(
+			'vtrans',
+			sprintf(
+				'Request exceeds max_chars: %d characters sent, limit is %d (connection "%s"%s). The request was executed anyway.',
+				$payloadLength,
+				$maxChars,
+				$connectionKey,
+				null !== $entryKey ? ', key "' . $entryKey . '"' : ''
+			)
+		);
 	}
 
 	/**
@@ -643,13 +692,26 @@ class VTrans
 	}
 
 	/** @return array<string, mixed>|null */
-	private static function findEntryByKey(string $entryKey, string $connectionKey, string $targetLang): ?array
+	private static function findEntryByKey(string $entryKey, string $connectionKey, string $targetLang, ?string $srcLang, string $format): ?array
 	{
+		// source and format are part of the identity of a keyed record. Without
+		// them the same key handed back HTML markup in a text context, or a
+		// translation made from a different source language.
+		$query = 'SELECT id, hash, translation, duration_ms, data FROM ' . rex::getTable('vtrans')
+			. ' WHERE `key` = ? AND `target` = ? AND `connection` = ? AND `format` = ? AND `source` ';
+		$params = [$entryKey, $targetLang, $connectionKey, $format];
+
+		if (null !== $srcLang) {
+			$query .= '= ?';
+			$params[] = $srcLang;
+		} else {
+			$query .= 'IS NULL';
+		}
+
+		$query .= ' LIMIT 1';
+
 		$sql = rex_sql::factory();
-		$sql->setQuery(
-			'SELECT id, hash, translation, duration_ms, data FROM ' . rex::getTable('vtrans') . ' WHERE `key` = ? AND `target` = ? AND `connection` = ? LIMIT 1',
-			[$entryKey, $targetLang, $connectionKey]
-		);
+		$sql->setQuery($query, $params);
 
 		if ($sql->getRows() <= 0) {
 			return null;

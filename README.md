@@ -8,14 +8,14 @@ The primary use case is translation. With LLM-based providers (for example the O
 it can also be used for other scenarios where the source and target language are the same,
 for example summarizing, rephrasing, or editing content.
 
-> Note: vTrans is currently in an early beta phase. Production use is only recommended after appropriate testing
-> and close monitoring.
+> Note: vTrans is a release candidate for version 1.0. Production use is recommended only after
+> appropriate testing and under close monitoring.
 
 ---
 
 ## Installation
 
-Install it via the REDAXO installer (not yet available) or copy it manually to `redaxo/src/addons/vtrans` and activate it in the backend.
+Install it via the REDAXO installer or copy it manually to `redaxo/src/addons/vtrans` and activate it in the backend.
 
 **Requirements:**
 - REDAXO >= 5.17.0
@@ -30,6 +30,8 @@ Install it via the REDAXO installer (not yet available) or copy it manually to `
 3. Enter the API key, API URL, and any additional parameters.
 4. Optionally mark it as the default and/or enable it for the Playground.
 5. Open `vTrans -> Playground` and test it.
+6. Check out the template example and try it out. That's the quickest way to understand the concept.
+
 
 Example for a DeepL Free connection:
 - Key: `deepl_free`
@@ -63,6 +65,8 @@ Notes:
 - `deepl-api-free-v2`
 - `deepl-api-pro-v2`
 - Supports `context` and `customInstructions`
+
+> Note: Unfortunately, DeepL's free plan (500k characters/month) no longer exists. For testing, or later as a low-cost alternative, I've set up a DeepL-compatible server. Get in touch if you're interested!
 
 ### Amazon Translate
 - Good to very good translation quality
@@ -119,7 +123,7 @@ Configuration is done via the backend page `Connections`. There, connections are
 - Provider / API (provider / interface)
 - Debug flag
 - Timeout
-- Max. characters
+- Max. characters (a guideline, see below)
 - Playground flag (available in the Playground)
 - Various provider-specific parameters
 
@@ -148,6 +152,17 @@ If a `key` is set, vTrans works with a stable dataset per model and target langu
 - If an entry with the same hash already exists, it is reused.
 - If the content has changed, the existing key-based record is updated.
 - Without a key, only the normal cache based on hash, connection, language, and format is used.
+
+A keyed record is identified by **key, source language, target language, connection and format**.
+The same key can therefore exist as `text` and as `html` side by side without one overwriting
+the other.
+
+### Max. characters
+
+`Max. characters` is a **guideline, not a limit**. When a request exceeds it, vTrans records
+that in the REDAXO system log (once per connection and request) and sends the request anyway.
+That keeps the cost visible without breaking a site whose articles are simply longer than the
+configured value.
 
 ## Usage in Code
 
@@ -366,6 +381,7 @@ returned unchanged.
 
 - Project: https://github.com/FriendsOfREDAXO/vtrans
 - Community: https://www.redaxo.org
+- Slack: [FOR Slack Channel](https://friendsofredaxo.slack.com/)
 
 ## Credits
 
