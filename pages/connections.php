@@ -184,6 +184,10 @@ if ($isFormSubmit) {
         $connection->setParams($params);
         if (0 === $connection->getId()) {
             $connection->setPrio(VTransConnection::getNextPrio());
+            // A default must always exist once there is at least one connection.
+            if (null === VTransConnection::getDefault()) {
+                $connection->setDefault(true);
+            }
         }
         $connection->setPlayground((bool) $postPlayground);
         $connection->save();
