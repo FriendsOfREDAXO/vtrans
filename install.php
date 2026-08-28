@@ -2,56 +2,6 @@
 
 /** @var rex_addon $this */
 
-// Migrate: rename column `active` → `is_default` for existing installations.
-// Note: `default` is a MySQL reserved keyword, so `is_default` is used instead.
-try {
-    $migSql = rex_sql::factory();
-    if (!empty($migSql->getArray('SHOW COLUMNS FROM ' . rex::getTable('vtrans_agent') . ' LIKE \'active\''))) {
-        $migSql->setQuery('ALTER TABLE ' . rex::getTable('vtrans_agent') . ' CHANGE `active` `is_default` tinyint(1) NOT NULL DEFAULT 0');
-        $migSql->setQuery('UPDATE ' . rex::getTable('vtrans_agent') . ' SET is_default = 0');
-        $migSql->setQuery('UPDATE ' . rex::getTable('vtrans_agent') . ' SET is_default = 1 ORDER BY prio ASC, id ASC LIMIT 1');
-    }
-} catch (Throwable $e) {
-    // Migration may already be done or the table is being created for the first time.
-}
-
-// Migrate: rename table vtrans_agent → vtrans_connection.
-try {
-    $migSql = rex_sql::factory();
-    if (!empty($migSql->getArray('SHOW TABLES LIKE \'' . rex::getTablePrefix() . 'vtrans_agent\''))) {
-        $migSql->setQuery('RENAME TABLE ' . rex::getTable('vtrans_agent') . ' TO ' . rex::getTable('vtrans_connection'));
-    }
-} catch (Throwable $e) {
-    // Migration may already be done or the table is being created for the first time.
-}
-
-// Migrate: rename column `agent` → `connection` in vtrans table.
-try {
-    $migSql = rex_sql::factory();
-    if (!empty($migSql->getArray('SHOW COLUMNS FROM ' . rex::getTable('vtrans') . ' LIKE \'agent\''))) {
-        $migSql->setQuery('ALTER TABLE ' . rex::getTable('vtrans') . ' CHANGE `agent` `connection` varchar(191) NULL DEFAULT NULL');
-        // Rename index key_target_agent_unique → key_target_connection_unique if it exists.
-        $indexes = $migSql->getArray('SHOW INDEX FROM ' . rex::getTable('vtrans') . ' WHERE Key_name = \'key_target_agent_unique\'');
-        if (!empty($indexes)) {
-            $migSql->setQuery('ALTER TABLE ' . rex::getTable('vtrans') . ' DROP INDEX `key_target_agent_unique`');
-            $migSql->setQuery('ALTER TABLE ' . rex::getTable('vtrans') . ' ADD UNIQUE KEY `key_target_connection_unique` (`key`, `target`, `connection`)');
-        }
-    }
-} catch (Throwable $e) {
-    // Migration may already be done or the table is being created for the first time.
-}
-
-// Migrate: drop old key_unique index on rex_vtrans (was only on `key`) — replaced by key_target_connection_unique.
-try {
-    $migSql = rex_sql::factory();
-    $indexes = $migSql->getArray('SHOW INDEX FROM ' . rex::getTable('vtrans') . ' WHERE Key_name = \'key_unique\'');
-    if (!empty($indexes)) {
-        $migSql->setQuery('ALTER TABLE ' . rex::getTable('vtrans') . ' DROP INDEX `key_unique`');
-    }
-} catch (Throwable $e) {
-    // Migration may already be done or the table is being created for the first time.
-}
-
 // Connection configuration table.
 rex_sql_table::get(rex::getTable('vtrans_connection'))
     ->ensurePrimaryIdColumn()
@@ -107,10 +57,9 @@ rex_sql_table::get(rex::getTable('vtrans'))
     ->ensureIndex(new rex_sql_index('source', ['source']))
     ->ensureIndex(new rex_sql_index('target', ['target']))
     ->ensureIndex(new rex_sql_index('format', ['format']))
-    // source and format belong in here: a stable key is one record per source
-    // language, target language, connection and format. Without format the same
-    // key returned HTML markup in a text context and vice versa.
-    ->removeIndex('key_target_connection_unique')
+    // A stable key is one record per source language, target language, connection and
+    // format. Without format the same key returned HTML markup in a text context and
+    // vice versa.
     ->ensureIndex(new rex_sql_index('key_target_conn_src_format_unique', ['key', 'target', 'connection', 'source', 'format'], rex_sql_index::UNIQUE))
     ->ensure();
 
@@ -119,34 +68,3 @@ $dataDir = rex_path::addonData('vtrans');
 if (!is_dir($dataDir)) {
     rex_dir::create($dataDir);
 }
-
-// Initialize default model configuration for the first installation.
-$config = $this->getConfig();
-$models = $config['models'] ?? [];
-if (!is_array($models)) {
-    $models = [];
-}
-
-if (!isset($models['myMemory']) || !is_array($models['myMemory'])) {
-    $defaultConfig = $this->getProperty('default_config');
-    $defaultMyMemory = is_array($defaultConfig)
-        && isset($defaultConfig['models'])
-        && is_array($defaultConfig['models'])
-        && isset($defaultConfig['models']['myMemory'])
-        && is_array($defaultConfig['models']['myMemory'])
-        ? $defaultConfig['models']['myMemory']
-        : [
-            'api' => 'mymemory-v2',
-            'label' => 'MyMemory',
-            'apiUrl' => 'https://api.mymemory.translated.net/get',
-            'apiKey' => '',
-            'email' => '',
-            'debug' => false,
-            'timeout' => 30,
-        ];
-
-    $models['myMemory'] = $defaultMyMemory;
-    $config['models'] = $models;
-    $this->setConfig($config);
-}
-
