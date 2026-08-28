@@ -50,8 +50,7 @@ installer_ignore:
     - .DS_Store
     - composer.json
     - composer.lock
-    - AUDIT-2026-08-09.md
-    - SECURITY-AUDIT.md
+    - AUDIT-*.md
     - CLAUDE.md
     - AGENTS.md
     - .claude
