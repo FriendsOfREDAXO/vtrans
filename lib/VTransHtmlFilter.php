@@ -80,17 +80,12 @@ class VTransHtmlFilter
 			return $html;
 		}
 
-		$callback = function (array $m): string {
-			$id = (int) $m[1];
-			return $this->map[$id] ?? $m[0];
-		};
-
 		// First pass, over the provider's answer: replace self-closing and paired
 		// placeholder variants that APIs may produce. The `s` (DOTALL) flag ensures
 		// multi-line content between paired tags is consumed.
 		$html = preg_replace_callback(
 			'/<' . preg_quote(self::PH_TAG, '/') . '\s+id=["\']?(\d+)["\']?\s*\/?>(?:.*?<\/' . preg_quote(self::PH_TAG, '/') . '>)?/is',
-			$callback,
+			$this->resolvePlaceholder(...),
 			$html
 		) ?? $html;
 
@@ -105,10 +100,23 @@ class VTransHtmlFilter
 
 		for ($i = 0; $i < $maxIterations && $html !== $previous; $i++) {
 			$previous = $html;
-			$html = preg_replace_callback($nestedPattern, $callback, $html) ?? $html;
+			$html = preg_replace_callback($nestedPattern, $this->resolvePlaceholder(...), $html) ?? $html;
 		}
 
 		return $html;
+	}
+
+	/**
+	 * Resolve a single placeholder match to its stored original content.
+	 * An unknown id is left untouched so nothing is silently dropped.
+	 *
+	 * @param array<int|string, string> $m
+	 */
+	private function resolvePlaceholder(array $m): string
+	{
+		$id = (int) $m[1];
+
+		return $this->map[$id] ?? $m[0];
 	}
 
 	/**
