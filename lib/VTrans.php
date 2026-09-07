@@ -273,7 +273,9 @@ class VTrans
 			return self::normalizeStringValue($cachedTranslation['translation'] ?? null);
 		}
 
-		if (null !== $cachedTranslation && null !== $entryKey) {
+		// A keyless cache hit already returned above, so reaching this point with a
+		// cached row implies $entryKey is set: copy the hit into the keyed record.
+		if (null !== $cachedTranslation) {
 			$insertId = self::storeTranslation(
 				$api,
 				self::normalizeStringValue($connectionData['key'] ?? null),

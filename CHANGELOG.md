@@ -13,6 +13,9 @@ Breaking changes may still occur until `1.0.0` is tagged.
 ### Fixed
 - Nested placeholders in the HTML filter are now fully resolved. `VTransHtmlFilter::prepare()` masks `script`/`style`/`code`/`svg` before it masks `data-vtrans-exclude` and `translate="no"`/`.notranslate` elements, so a stored fragment could itself contain placeholders. `restore()` ran a single pass and left those inner placeholders as literal `<vtrans-ph id="N"/>` text — an excluded block containing an SVG icon, a `<style>` or a `<script>` lost that content in the output. `restore()` now repeats until nothing changes, bounded by the number of placeholders.
 
+### Changed
+- Internal cleanups with no effect on behaviour: the placeholder callback in `VTransHtmlFilter` moved into a typed method, and a condition in `VTrans::translate()` that could never evaluate to `false` was removed — a keyless cache hit returns one branch earlier, so the additional key check was already implied. The addon is clean under rexstan at level 10.
+
 ## [1.0.0-beta] - 2026-08-22
 
 Release candidate for the first production version. It repairs the update path, makes
