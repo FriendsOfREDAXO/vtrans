@@ -62,6 +62,17 @@ class VTransHtmlFilter
 
 	/**
 	 * Restore all placeholders in the translated text with the original content.
+	 *
+	 * Stored fragments can themselves contain placeholders: prepare() masks
+	 * script/style/code/svg first, so an element replaced later (data-vtrans-exclude,
+	 * translate="no", notranslate) may hold placeholders created in that earlier step.
+	 * A single pass would leave those nested placeholders as literal text.
+	 *
+	 * Restoring therefore happens in two phases with deliberately different patterns:
+	 * one tolerant pass over the provider's answer, then repeated strict passes over
+	 * the fragments this method re-inserted itself, until nothing changes any more.
+	 * The iteration limit is a safety brake against malformed input; in practice a
+	 * single extra pass suffices.
 	 */
 	public function restore(string $html): string
 	{
@@ -69,16 +80,35 @@ class VTransHtmlFilter
 			return $html;
 		}
 
-		// Replace self-closing and paired placeholder variants that APIs may produce.
-		// The `s` (DOTALL) flag ensures multi-line content between paired tags is consumed.
-		return preg_replace_callback(
+		$callback = function (array $m): string {
+			$id = (int) $m[1];
+			return $this->map[$id] ?? $m[0];
+		};
+
+		// First pass, over the provider's answer: replace self-closing and paired
+		// placeholder variants that APIs may produce. The `s` (DOTALL) flag ensures
+		// multi-line content between paired tags is consumed.
+		$html = preg_replace_callback(
 			'/<' . preg_quote(self::PH_TAG, '/') . '\s+id=["\']?(\d+)["\']?\s*\/?>(?:.*?<\/' . preg_quote(self::PH_TAG, '/') . '>)?/is',
-			function (array $m): string {
-				$id = (int) $m[1];
-				return $this->map[$id] ?? $m[0];
-			},
+			$callback,
 			$html
 		) ?? $html;
+
+		// Further passes, over content this method itself re-inserted: those fragments
+		// only ever carry the self-closing form written by placeholder(), so the pattern
+		// must NOT consume up to a closing tag. Doing so would let a nested placeholder
+		// swallow everything up to any stray `</vtrans-ph>` left elsewhere in the document.
+		$nestedPattern = '/<' . preg_quote(self::PH_TAG, '/') . '\s+id=["\']?(\d+)["\']?\s*\/?>/i';
+
+		$previous = null;
+		$maxIterations = count($this->map);
+
+		for ($i = 0; $i < $maxIterations && $html !== $previous; $i++) {
+			$previous = $html;
+			$html = preg_replace_callback($nestedPattern, $callback, $html) ?? $html;
+		}
+
+		return $html;
 	}
 
 	/**

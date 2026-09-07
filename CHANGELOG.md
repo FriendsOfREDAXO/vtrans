@@ -5,8 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-`1.0.0-beta` is the release candidate for the first production release `1.0.0`.
+The `1.0.0-beta` line is the release candidate for the first production release `1.0.0`.
 Breaking changes may still occur until `1.0.0` is tagged.
+
+## [1.0.0-beta2] - 2026-09-07
+
+### Fixed
+- Nested placeholders in the HTML filter are now fully resolved. `VTransHtmlFilter::prepare()` masks `script`/`style`/`code`/`svg` before it masks `data-vtrans-exclude` and `translate="no"`/`.notranslate` elements, so a stored fragment could itself contain placeholders. `restore()` ran a single pass and left those inner placeholders as literal `<vtrans-ph id="N"/>` text — an excluded block containing an SVG icon, a `<style>` or a `<script>` lost that content in the output. `restore()` now repeats until nothing changes, bounded by the number of placeholders.
 
 ## [1.0.0-beta] - 2026-08-22
 
