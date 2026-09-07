@@ -8,8 +8,8 @@ namespace FriendsOfRedaxo\VTrans;
  * Before a translation request is sent to any provider this filter:
  * 1. Removes entire blocks that should never be sent (script, style, code,
  *    svg and elements with `data-vtrans-exclude`).
- * 2. Replaces content inside elements marked with `translate="no"` or the
- *    CSS class `notranslate` with compact placeholders.
+ * 2. Replaces elements marked with `translate="no"` or the CSS class
+ *    `notranslate` — opening tag included — with compact placeholders.
  *
  * After the translated text comes back, all placeholders are resolved back
  * to their original content.
@@ -54,7 +54,7 @@ class VTransHtmlFilter
 		// 2. Remove elements marked with data-vtrans-exclude (with their full content).
 		$html = $this->replaceMarkedElements($html, 'data-vtrans-exclude');
 
-		// 3. Protect content of translate="no" and class="notranslate" elements.
+		// 3. Protect translate="no" and class="notranslate" elements.
 		$html = $this->replaceNoTranslateElements($html);
 
 		return $html;
@@ -81,10 +81,22 @@ class VTransHtmlFilter
 		}
 
 		// First pass, over the provider's answer: replace self-closing and paired
-		// placeholder variants that APIs may produce. The `s` (DOTALL) flag ensures
-		// multi-line content between paired tags is consumed.
+		// placeholder variants. The paired form is not just a provider quirk — the
+		// sanitiser's DOM round trip rewrites every `<vtrans-ph id="0"/>` into
+		// `<vtrans-ph id="0"></vtrans-ph>` — so this pattern has to consume it, and
+		// the `s` (DOTALL) flag makes that work across lines.
+		//
+		// The inner `(?:(?!<vtrans-ph\b).)*?` is a tempered dot: a plain `.*?` would
+		// happily run past further opening placeholders to reach some distant
+		// `</vtrans-ph>` and swallow everything in between. It takes an answer that
+		// pairs the placeholders itself and then drops one closing tag — something an
+		// LLM provider normalising the markup can produce. The sanitiser's parser
+		// balances such an answer before it gets here, so with `sanitize_html = 1`
+		// the guard changes nothing; with `sanitize_html = 0` it is what keeps that
+		// one missing tag from truncating the rest of the document.
 		$html = preg_replace_callback(
-			'/<' . preg_quote(self::PH_TAG, '/') . '\s+id=["\']?(\d+)["\']?\s*\/?>(?:.*?<\/' . preg_quote(self::PH_TAG, '/') . '>)?/is',
+			'/<' . preg_quote(self::PH_TAG, '/') . '\s+id=["\']?(\d+)["\']?\s*\/?>'
+			. '(?:(?:(?!<' . preg_quote(self::PH_TAG, '/') . '\b).)*?<\/' . preg_quote(self::PH_TAG, '/') . '>)?/is',
 			$this->resolvePlaceholder(...),
 			$html
 		) ?? $html;
@@ -197,9 +209,13 @@ class VTransHtmlFilter
 	}
 
 	/**
-	 * Protect inner content of elements with `translate="no"` or `class="…notranslate…"`.
+	 * Protect elements with `translate="no"` or `class="…notranslate…"`.
 	 * Uses nesting-aware matching to correctly handle nested tags of the same type.
-	 * The outer element is kept; only its inner content is replaced with a placeholder.
+	 *
+	 * The *whole* element is replaced — opening tag included, exactly like
+	 * `data-vtrans-exclude`. Masking only the inner content left the opening tag in
+	 * the stream, where the sanitiser stripped its `on*` handlers: a marked
+	 * `<button class="notranslate" onclick="…">` came back without its handler.
 	 */
 	private function replaceNoTranslateElements(string $html): string
 	{
@@ -231,12 +247,8 @@ class VTransHtmlFilter
 				continue;
 			}
 
-			[$closeStart, $closeEnd] = $closeInfo;
-			$inner    = substr($html, $innerStart, $closeStart - $innerStart);
-			$closeTag = substr($html, $closeStart, $closeEnd - $closeStart);
-
-			$result .= $openTag . $this->placeholder($inner) . $closeTag;
-			$pos = $closeEnd;
+			$result .= $this->placeholder(substr($html, $tagStart, $closeInfo[1] - $tagStart));
+			$pos = $closeInfo[1];
 		}
 
 		return $result;

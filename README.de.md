@@ -359,13 +359,34 @@ Entfernt werden `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>
 Artikel-Markup bleibt erhalten: Links, Bilder, `srcset`, `class`, `id`, Inline-`style`,
 `title`, `lang`, `dir`, Tabellen und Listen.
 
-Eigene `<script>`- und `<style>`-Blöcke sind **nicht** betroffen. Der HTML-Filter nimmt sie
-vor dem API-Aufruf heraus und setzt sie danach wieder ein — also nach der Bereinigung —,
-sie laufen also nie durch sie hindurch. Bereinigt wird beim Schreiben, nie beim Lesen:
+Nichts, was du selbst markiert hast, ist betroffen: eigene `<script>`- und `<style>`-Blöcke
+sowie jeder Bereich mit `data-vtrans-exclude`, `translate="no"` oder `.notranslate` werden
+vom HTML-Filter vor dem API-Aufruf herausgenommen und danach wieder eingesetzt — also nach
+der Bereinigung —, sie laufen nie durch sie hindurch. Ein `<button class="notranslate"
+onclick="…">` behält damit seinen Handler. Bereinigt wird beim Schreiben, nie beim Lesen:
 ein gecachter Datensatz wird unverändert zurückgegeben.
 
 > Datensätze aus der Zeit vor dieser Version wurden unbereinigt gespeichert. Wurde damals
 > eine Übersetzung manuell bearbeitet, lohnt sich ein Blick darauf.
+
+#### Pro Verbindung konfigurierbar
+
+Zwei Einstellungen auf der Verbindungsseite ändern das Verhalten für alles, was für diese
+Verbindung geschrieben wird:
+
+- **HTML-Bereinigung** — abgeschaltet werden die Antwort des Providers und jede manuelle
+  Korrektur auf der Seite `Daten` roh gespeichert und im Frontend bei jedem Cache-Treffer
+  ungefiltert als HTML ausgegeben. Nur vertretbar, wenn du sowohl dem Provider als auch
+  allen Nutzern mit `vtrans[]`-Recht vertraust. Bestehende Verbindungen bleiben bereinigt;
+  die Einstellung muss bewusst abgeschaltet werden.
+- **Zusätzlich erlauben** — die gezielte Alternative. Einträge durch Leerzeichen oder Komma
+  getrennt: ein blanker Name erlaubt ein Attribut auf allen Elementen (`onclick`,
+  `data-action`), ein Name in spitzen Klammern ein Element (`<iframe>`). Alles andere bleibt
+  auf der Allowlist wie gehabt — deshalb ist das der Abschaltung vorzuziehen.
+
+> Besser als beide Einstellungen ist es, das betreffende Markup als ausgeschlossen zu
+> markieren — ein ausgeschlossener Bereich erreicht den Sanitizer gar nicht erst, und nichts
+> anderes auf der Seite wird aufgeweicht.
 
 ### Automatisch ausgeschlossene Tags
 

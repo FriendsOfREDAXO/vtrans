@@ -360,13 +360,31 @@ Removed are `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `
 is kept: links, images, `srcset`, `class`, `id`, inline `style`, `title`, `lang`, `dir`,
 tables and lists.
 
-Your own `<script>` and `<style>` blocks are **not** affected. They are removed by the HTML
-filter before the API call and restored afterwards — that is, after sanitisation — so they
-never pass through it. Sanitisation happens on write, never on read: a cached record is
-returned unchanged.
+Nothing you marked yourself is affected: your own `<script>` and `<style>` blocks and every
+region carrying `data-vtrans-exclude`, `translate="no"` or `.notranslate` are removed by the
+HTML filter before the API call and restored afterwards — that is, after sanitisation — so
+they never pass through it. A `<button class="notranslate" onclick="…">` therefore keeps its
+handler. Sanitisation happens on write, never on read: a cached record is returned unchanged.
 
 > Records written before this version were stored unsanitised. If a translation was edited
 > manually back then, it is worth reviewing it.
+
+#### Configuring it per connection
+
+Two settings on the connection page change the behaviour for everything written for that
+connection:
+
+- **HTML sanitisation** — switching it off stores the provider's answer and every manual
+  edit on the `Data` page raw, and the frontend renders it as unfiltered HTML on every cache
+  hit. Only defensible if you trust both the provider and everyone holding `vtrans[]`.
+  Existing connections keep sanitisation on; the setting has to be switched off deliberately.
+- **Additionally allow** — the targeted alternative. Entries separated by spaces or commas:
+  a bare name allows an attribute on every element (`onclick`, `data-action`), a name in
+  angle brackets allows an element (`<iframe>`). Everything else stays on the allowlist as
+  it is, which is why this is preferable to switching sanitisation off.
+
+> Prefer marking the markup in question as excluded over both settings — an excluded region
+> never reaches the sanitiser in the first place, and nothing else on the page is weakened.
 
 ### Automatically excluded tags
 

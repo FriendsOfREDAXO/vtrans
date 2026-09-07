@@ -28,6 +28,8 @@ class VTransConnection
 	private bool $isDefault = false;
 	private int $prio = 0;
 	private bool $playground = true;
+	private bool $sanitizeHtml = true;
+	private ?string $sanitizeAllowExtra = null;
 	private string $createdate = '';
 	private string $createuser = '';
 	private string $updatedate = '';
@@ -223,6 +225,8 @@ class VTransConnection
 		$sql->setValue('is_default', (int) $this->isDefault);
 		$sql->setValue('prio', $this->prio);
 		$sql->setValue('playground', (int) $this->playground);
+		$sql->setValue('sanitize_html', (int) $this->sanitizeHtml);
+		$sql->setValue('sanitize_allow_extra', $this->sanitizeAllowExtra);
 
 		$login = (string) (rex::getUser()?->getLogin() ?? 'system');
 
@@ -309,6 +313,8 @@ class VTransConnection
 	public function isDefault(): bool { return $this->isDefault; }
 	public function getPrio(): int { return $this->prio; }
 	public function isPlayground(): bool { return $this->playground; }
+	public function isSanitizeHtml(): bool { return $this->sanitizeHtml; }
+	public function getSanitizeAllowExtra(): ?string { return $this->sanitizeAllowExtra; }
 	public function getCreatedate(): string { return $this->createdate; }
 	public function getCreateuser(): string { return $this->createuser; }
 	public function getUpdatedate(): string { return $this->updatedate; }
@@ -330,6 +336,8 @@ class VTransConnection
 	public function setDefault(bool $isDefault): self { $this->isDefault = $isDefault; return $this; }
 	public function setPrio(int $prio): self { $this->prio = $prio; return $this; }
 	public function setPlayground(bool $playground): self { $this->playground = $playground; return $this; }
+	public function setSanitizeHtml(bool $sanitizeHtml): self { $this->sanitizeHtml = $sanitizeHtml; return $this; }
+	public function setSanitizeAllowExtra(?string $sanitizeAllowExtra): self { $this->sanitizeAllowExtra = (null !== $sanitizeAllowExtra && '' !== trim($sanitizeAllowExtra)) ? trim($sanitizeAllowExtra) : null; return $this; }
 
 	// --- Internal ---
 
@@ -350,6 +358,9 @@ class VTransConnection
 		$connection->isDefault = (bool) (int) $sql->getValue('is_default');
 		$connection->prio = (int) $sql->getValue('prio');
 		$connection->playground = (bool) (int) $sql->getValue('playground');
+		$connection->sanitizeHtml = (bool) (int) $sql->getValue('sanitize_html');
+		$rawAllowExtra = $sql->getValue('sanitize_allow_extra');
+		$connection->sanitizeAllowExtra = (null !== $rawAllowExtra && '' !== trim((string) $rawAllowExtra)) ? trim((string) $rawAllowExtra) : null;
 		$connection->createdate = (string) $sql->getValue('createdate');
 		$connection->createuser = (string) $sql->getValue('createuser');
 		$connection->updatedate = (string) $sql->getValue('updatedate');

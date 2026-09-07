@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The `1.0.0-beta` line is the release candidate for the first production release `1.0.0`.
 Breaking changes may still occur until `1.0.0` is tagged.
 
+## [1.0.0-beta3] - 2026-09-07
+
+### Fixed
+- Regions marked as "do not translate" keep their event handlers again. `VTransHtmlFilter` masked `translate="no"` and `.notranslate` elements by replacing only their *inner* content, so the opening tag stayed in the stream that is handed to the sanitiser — a `<button class="notranslate" onclick="…">` came back without its `onclick`. The whole element is masked now, opening tag included, exactly as `data-vtrans-exclude` and `<script>`/`<style>` already were. Nothing an author marked as excluded passes through the sanitiser any more; everything else still does.
+
+### Added
+- Sanitisation is configurable per connection. `sanitize_html` (default `1`) switches it off for everything written for that connection — the provider's answer and manual edits on the data page alike; `sanitize_allow_extra` widens the allowlist by named attributes (`onclick`) and elements (`<iframe>`) instead of dropping the filter entirely. Both are edited on the connection page; the list shows the state per connection. Existing installations get the columns with the safe default, so nothing changes for them until an admin changes it.
+- `tests/sanitizer.php`, a standalone script (no REDAXO, no database) covering the filter/sanitiser round trip: excluded regions keep their handlers, ordinary translated text does not, a disabled connection stores raw HTML, and an untouched connection stays on the safe default.
+
+### Changed
+- Hardened the first restore pass of `VTransHtmlFilter` against an answer that pairs the placeholders itself and then loses a closing tag: the pattern no longer runs past a following opening placeholder to reach a distant `</vtrans-ph>`, which truncated everything in between. With sanitisation active this cannot occur — the sanitiser's parser balances the answer beforehand — so this only matters for connections with `sanitize_html = 0`, and the behaviour on the sanitised path is unchanged.
+- Schema: `rex_vtrans_connection` gains `sanitize_html` (`tinyint(1)`, default `1`) and `sanitize_allow_extra` (`text`, nullable). Added idempotently in `install.php`, so a reinstall and an installer update both apply them.
+
 ## [1.0.0-beta2] - 2026-09-07
 
 ### Fixed

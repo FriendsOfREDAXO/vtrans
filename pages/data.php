@@ -184,9 +184,11 @@ if ('edit' === $func && $id > 0) {
             // is not admin-trusted -- and it goes straight into the frontend as
             // HTML on every cache hit. Sanitise, and say so when something was
             // removed rather than silently changing what was saved.
+            // The connection of the record decides: an admin may switch
+            // sanitisation off per connection, and then this edit is stored raw.
             $wasSanitized = false;
             if ('html' === strtolower((string) $sql->getValue('format'))) {
-                $sanitized = VTransSanitizer::sanitize($translation);
+                $sanitized = VTransSanitizer::sanitize($translation, (string) $sql->getValue('connection'));
                 if ($sanitized !== $translation) {
                     $translation = $sanitized;
                     $wasSanitized = true;

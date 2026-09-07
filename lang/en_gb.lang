@@ -39,6 +39,13 @@ vtrans_connections_set_default = Set as default
 vtrans_connections_prio = Priority
 vtrans_connections_prio_note = Lowest value = default connection
 vtrans_connections_playground = Available in playground
+vtrans_connections_sanitize = HTML sanitisation
+vtrans_connections_sanitize_activate = Sanitise translations of this connection before storing them
+vtrans_connections_sanitize_note = Recommended. Removes scripting from everything stored for this connection. Regions marked as "do not translate" and your own script/style blocks are never affected. See the documentation for details.
+vtrans_connections_sanitize_on = HTML sanitisation on
+vtrans_connections_sanitize_off = HTML sanitisation off
+vtrans_connections_sanitize_allow_extra = Additionally allow
+vtrans_connections_sanitize_allow_extra_note = Only effective while sanitisation is active. Bare name = attribute (onclick), angle brackets = element (&lt;iframe&gt;), separated by spaces or commas.
 vtrans_connections_timeout = Timeout (s)
 vtrans_connections_timeout_note = HTTP timeout in seconds per API request. Leave empty to use the global default ({global} s).
 vtrans_connections_max_chars = Max. chars

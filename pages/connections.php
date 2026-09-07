@@ -102,6 +102,8 @@ if ($isFormSubmit) {
     $postLabel = rex_post('label', 'string', '');
     $postPlayground = rex_post('playground', 'int', 1);
     $postDebug = rex_post('debug', 'int', 0);
+    $postSanitizeHtml = rex_post('sanitize_html', 'int', 1);
+    $postSanitizeAllowExtra = rex_post('sanitize_allow_extra', 'string', '');
 
     // Common column fields.
     $postApiKey = rex_post('api_key', 'string', '');
@@ -181,6 +183,8 @@ if ($isFormSubmit) {
         $connection->setTimeout($postTimeout);
         $connection->setMaxChars($postMaxChars);
         $connection->setDebug((bool) $postDebug);
+        $connection->setSanitizeHtml((bool) $postSanitizeHtml);
+        $connection->setSanitizeAllowExtra($postSanitizeAllowExtra);
         $connection->setParams($params);
         if (0 === $connection->getId()) {
             $connection->setPrio(VTransConnection::getNextPrio());
@@ -243,6 +247,8 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $currentMaxCharsRaw = $isFormPost ? rex_post('max_chars', 'string', '') : (null !== $connection?->getMaxChars() ? (string) $connection->getMaxChars() : '');
         $currentDebug = $isFormPost ? rex_post('debug', 'int', 0) : (int) ($connection?->isDebug() ?? false);
         $currentPlayground = $isFormPost ? rex_post('playground', 'int', 1) : (int) ($connection?->isPlayground() ?? true);
+        $currentSanitizeHtml = $isFormPost ? rex_post('sanitize_html', 'int', 1) : (int) ($connection?->isSanitizeHtml() ?? true);
+        $currentSanitizeAllowExtra = $isFormPost ? rex_post('sanitize_allow_extra', 'string', '') : ($connection?->getSanitizeAllowExtra() ?? '');
         $currentParams = $connection?->getParams() ?? [];
 
         $formElements = [];
@@ -368,6 +374,19 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $n['field'] = '<input type="hidden" name="playground" value="0"><label class="control-label font-normal"><input type="checkbox" name="playground" value="1"' . ($currentPlayground ? ' checked' : '') . '> ' . $this->i18n('vtrans_connections_playground') . '</label>';
         $formElements[] = $n;
 
+        // Sanitisation of what is written to the cache for this connection.
+        $n = [];
+        $n['label'] = '<label>' . $this->i18n('vtrans_connections_sanitize') . '</label>';
+        $n['field'] = '<input type="hidden" name="sanitize_html" value="0"><label class="control-label font-normal"><input type="checkbox" name="sanitize_html" value="1"' . ($currentSanitizeHtml ? ' checked' : '') . '> ' . $this->i18n('vtrans_connections_sanitize_activate') . '</label>';
+        $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_sanitize_note') . '</p>';
+        $formElements[] = $n;
+
+        $n = [];
+        $n['label'] = '<label for="vtrans-connection-sanitize-allow-extra">' . $this->i18n('vtrans_connections_sanitize_allow_extra') . '</label>';
+        $n['field'] = '<textarea class="form-control" id="vtrans-connection-sanitize-allow-extra" name="sanitize_allow_extra" rows="2" placeholder="onclick data-action &lt;iframe&gt;">' . rex_escape($currentSanitizeAllowExtra) . '</textarea>';
+        $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_sanitize_allow_extra_note') . '</p>';
+        $formElements[] = $n;
+
         $fragment = new rex_fragment();
         $fragment->setVar('elements', $formElements, false);
         $content = $fragment->parse('core/form/form.php');
@@ -426,6 +445,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $tableContent .= '<th>Provider</th>';
         $tableContent .= '<th class="rex-table-action">' . $this->i18n('vtrans_connections_default') . '</th>';
         $tableContent .= '<th class="rex-table-action"><i class="rex-icon fa-random" title="Playground"></i></th>';
+        $tableContent .= '<th class="rex-table-action"><i class="rex-icon fa-shield" title="' . rex_escape($this->i18n('vtrans_connections_sanitize')) . '"></i></th>';
         $tableContent .= '<th class="rex-table-action">' . $this->i18n('vtrans_connections_actions') . '</th>';
         $tableContent .= '</tr></thead>';
         $tableContent .= '<tbody>';
@@ -457,10 +477,17 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
             $tableContent .= '<td><a href="' . $editUrl . '">' . rex_escape($connection->getKey()) . '</a></td>';
             $tableContent .= '<td><a href="' . $editUrl . '">' . rex_escape($connection->getLabel()) . '</a></td>';
             $tableContent .= '<td><small>' . rex_escape($connection->getProvider()) . '</small></td>';
+
+            // Plain state indicator, not a toggle: switching sanitisation belongs on
+            // the edit form, next to the note that explains it.
+            $sanitizeIndicator = $connection->isSanitizeHtml()
+                ? '<i class="fa fa-check-square-o text-success" title="' . rex_escape($this->i18n('vtrans_connections_sanitize_on')) . '"></i>'
+                : '<i class="fa fa-square-o text-muted" title="' . rex_escape($this->i18n('vtrans_connections_sanitize_off')) . '"></i>';
             $moveUpUrl = rex_url::currentBackendPage(['func' => 'move_up', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
             $moveDownUrl = rex_url::currentBackendPage(['func' => 'move_down', 'id' => $connection->getId()] + $csrfToken->getUrlParams());
             $tableContent .= '<td class="rex-table-action" style="white-space:nowrap; text-align:center">' . $defaultToggle . '</td>';
             $tableContent .= '<td class="rex-table-action" style="white-space:nowrap">' . $playgroundToggle . '</td>';
+            $tableContent .= '<td class="rex-table-action" style="white-space:nowrap">' . $sanitizeIndicator . '</td>';
             $tableContent .= '<td class="rex-table-action" style="white-space:nowrap">';
             $tableContent .= '<a href="' . $moveUpUrl . '" title="' . rex_escape($this->i18n('vtrans_connections_move_up')) . '"><i class="rex-icon fa-arrow-up"></i></a> ';
             $tableContent .= '<a href="' . $moveDownUrl . '" style="margin-left:10px;" title="' . rex_escape($this->i18n('vtrans_connections_move_down')) . '"><i class="rex-icon fa-arrow-down"></i></a> ';

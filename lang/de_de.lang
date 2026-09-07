@@ -39,6 +39,13 @@ vtrans_connections_set_default = Als Standard festlegen
 vtrans_connections_prio = Priorität
 vtrans_connections_prio_note = Niedrigster Wert = Standard-Connection
 vtrans_connections_playground = Im Playground verfügbar
+vtrans_connections_sanitize = HTML-Bereinigung
+vtrans_connections_sanitize_activate = Übersetzungen dieser Verbindung vor dem Speichern bereinigen
+vtrans_connections_sanitize_note = Empfohlen. Entfernt Scripting aus allem, was für diese Verbindung gespeichert wird. Als „nicht übersetzen“ markierte Bereiche und eigene script-/style-Blöcke sind nie betroffen. Details in der Dokumentation.
+vtrans_connections_sanitize_on = HTML-Bereinigung aktiv
+vtrans_connections_sanitize_off = HTML-Bereinigung aus
+vtrans_connections_sanitize_allow_extra = Zusätzlich erlauben
+vtrans_connections_sanitize_allow_extra_note = Nur bei aktiver Bereinigung wirksam. Blanker Name = Attribut (onclick), spitze Klammern = Element (&lt;iframe&gt;), getrennt durch Leerzeichen oder Komma.
 vtrans_connections_timeout = Timeout (s)
 vtrans_connections_timeout_note = HTTP-Timeout in Sekunden pro API-Aufruf. Leer lassen für den globalen Standardwert ({global} s).
 vtrans_connections_max_chars = Max. Zeichen

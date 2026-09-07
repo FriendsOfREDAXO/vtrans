@@ -18,6 +18,10 @@ rex_sql_table::get(rex::getTable('vtrans_connection'))
     ->ensureColumn(new rex_sql_column('is_default', 'tinyint(1)', false, '0'))
     ->ensureColumn(new rex_sql_column('prio', 'int(10)', false, '0'))
     ->ensureColumn(new rex_sql_column('playground', 'tinyint(1)', false, '1'))
+    // Sanitisation is on by default, so existing connections stay safe when the
+    // columns are added on update.
+    ->ensureColumn(new rex_sql_column('sanitize_html', 'tinyint(1)', false, '1'))
+    ->ensureColumn(new rex_sql_column('sanitize_allow_extra', 'text', true, null))
     ->ensureColumn(new rex_sql_column('createdate', 'datetime', false, 'CURRENT_TIMESTAMP'))
     ->ensureColumn(new rex_sql_column('createuser', 'varchar(255)', false, ''))
     ->ensureColumn(new rex_sql_column('updatedate', 'datetime', false, 'CURRENT_TIMESTAMP'))
