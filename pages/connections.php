@@ -388,12 +388,21 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
             $formElements[] = $n;
         }
 
-        // Max chars.
-        $n = [];
-        $n['label'] = '<label for="vtrans-connection-max-chars">' . $this->i18n('vtrans_connections_max_chars') . '</label>';
-        $n['field'] = '<input type="number" min="1" class="form-control" id="vtrans-connection-max-chars" name="max_chars" value="' . rex_escape($currentMaxCharsRaw) . '" placeholder="' . (int) VTrans::GLOBAL_MAX_CHARS . '" style="max-width:180px" />';
-        $n['note'] = '<p class="help-block">' . str_replace('{global}', (string) (int) VTrans::GLOBAL_MAX_CHARS, $this->i18n('vtrans_connections_max_chars_note')) . '</p>';
-        $formElements[] = $n;
+        // Max chars. For the ai_platform provider this is derived from the selected
+        // profile's max_tokens (see the JS below), so the field is hidden there — the
+        // value is still populated and submitted via the hidden input.
+        if ('ai_platform' === $currentProvider) {
+            $n = [];
+            $n['label'] = '';
+            $n['field'] = '<input type="hidden" id="vtrans-connection-max-chars" name="max_chars" value="' . rex_escape($currentMaxCharsRaw) . '" />';
+            $formElements[] = $n;
+        } else {
+            $n = [];
+            $n['label'] = '<label for="vtrans-connection-max-chars">' . $this->i18n('vtrans_connections_max_chars') . '</label>';
+            $n['field'] = '<input type="number" min="1" class="form-control" id="vtrans-connection-max-chars" name="max_chars" value="' . rex_escape($currentMaxCharsRaw) . '" placeholder="' . (int) VTrans::GLOBAL_MAX_CHARS . '" style="max-width:180px" />';
+            $n['note'] = '<p class="help-block">' . str_replace('{global}', (string) (int) VTrans::GLOBAL_MAX_CHARS, $this->i18n('vtrans_connections_max_chars_note')) . '</p>';
+            $formElements[] = $n;
+        }
 
         // Playground.
         $n = [];
