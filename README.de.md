@@ -103,6 +103,13 @@ Hinweise:
 - Frei konfigurierbare Endpunkte und Parameter
 - Unterstützt `context` und `customInstructions`
 
+### KI Platform (Addon ai_platform)
+- `ai_platform`
+- Nutzt ein **Text-Profil** des Addons [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform), statt einen LLM-Endpunkt direkt aufzurufen
+- Provider, Modell, API-Key, Temperature und Token-Grenzen werden komplett im ai_platform-Profil verwaltet — die vTrans-Verbindung wählt nur das Profil aus
+- Übersetzungs-Anweisungen kommen aus dem `system_prompt` des Profils; vTrans ergänzt pro Aufruf die Übersetzungsdirektive (Quelle→Ziel, HTML/Text)
+- Benötigt das Addon `ai_platform`; ohne es ist der Provider inaktiv (leere Profil-Auswahl, klare Fehlermeldung bei Nutzung)
+
 ### Fake Local
 - praktisch während der Entwicklung
 - Erzeugt einfaches "Kauderwelsch" um die Funktion zu testen

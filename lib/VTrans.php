@@ -2,6 +2,7 @@
 
 namespace FriendsOfRedaxo\VTrans;
 
+use FriendsOfRedaxo\VTrans\Provider\VTransAiPlatformProvider;
 use FriendsOfRedaxo\VTrans\Provider\VTransAmazonTranslateProvider;
 use FriendsOfRedaxo\VTrans\Provider\VTransDeepLProvider;
 use FriendsOfRedaxo\VTrans\Provider\VTransFakeLocalProvider;
@@ -926,6 +927,7 @@ class VTrans
 				new VTransLibreTranslateProvider(),
 				new VTransMyMemoryProvider(),
 				new VTransOpenAIProvider(),
+				new VTransAiPlatformProvider(),
 			];
 		}
 

@@ -104,6 +104,13 @@ Notes:
 - Freely configurable endpoints and parameters
 - Supports `context` and `customInstructions`
 
+### AI Platform (ai_platform addon)
+- `ai_platform`
+- Delegates to a **text profile** of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon instead of calling an LLM endpoint directly
+- Provider, model, API key, temperature and token limits are all managed in the ai_platform profile — the vTrans connection only selects the profile
+- Translation instructions come from the profile's own `system_prompt`; vTrans adds the per-call translation directive (source→target, HTML/plain) on top
+- Requires the `ai_platform` addon; without it the provider is inert (empty profile select, clear error on use)
+
 ### Fake Local
 - Useful during development
 - Generates simple test output to verify the functionality
