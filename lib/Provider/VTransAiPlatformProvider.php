@@ -212,7 +212,7 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	public function getConfigFields(): array
 	{
 		return [
-			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'note' => $this->profileHint()],
+			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'option_data' => $this->profileOptionData(), 'note' => $this->profileHint()],
 		];
 	}
 
@@ -332,6 +332,33 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 		}
 
 		return $options;
+	}
+
+	/**
+	 * Per-option data attributes for the profile select: the profile's max_tokens,
+	 * used by the form to derive vTrans' "max characters" guideline.
+	 *
+	 * @return array<int|string, array<string, string>>
+	 */
+	private function profileOptionData(): array
+	{
+		if (!$this->isAiPlatformAvailable()) {
+			return [];
+		}
+
+		$data = [];
+		foreach (\FriendsOfRedaxo\AiPlatform\Service::getInstance()->getProfiles('text') as $profile) {
+			$id = $this->normalizeInt($profile['id'] ?? null, 0);
+			if ($id <= 0) {
+				continue;
+			}
+			$maxTokens = $this->normalizeInt($profile['max_tokens'] ?? null, 0);
+			if ($maxTokens > 0) {
+				$data[(string) $id] = ['data-max-tokens' => (string) $maxTokens];
+			}
+		}
+
+		return $data;
 	}
 
 	private function profileHint(): string

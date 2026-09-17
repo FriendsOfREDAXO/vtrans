@@ -20,6 +20,7 @@ Breaking changes may still occur until `1.0.0` is tagged.
 - Connection form is provider-aware for `ai_platform`: the profile is chosen from a dropdown of active text profiles; picking one prefills **Key** and **Bezeichnung** from the profile name (only while those fields are still empty, never overwriting manual input). The **Timeout** field is hidden for this provider because it makes no HTTP call of its own — the ai_platform addon does — and the stored value is preserved via a hidden input.
 - Translation instructions for the `ai_platform` provider come from the profile's own `system_prompt`; vTrans merges the per-call translation directive (source→target, HTML/plain) on top of it. The redundant per-connection "Custom Instructions" field was dropped for this provider.
 - "Zusätzlich erlauben" (`sanitize_allow_extra`) is only shown while "HTML-Bereinigung" is active, since it has no effect otherwise. The field stays in the DOM (its value still submits), it is only visually hidden.
+- For the `ai_platform` provider, the connection's "Max. Zeichen" guideline is derived from the selected profile's `max_tokens` (~4 characters per output token) and filled automatically when a profile is picked (on load only when the field is still empty).
 
 ## [1.0.0-beta3] - 2026-09-07
 

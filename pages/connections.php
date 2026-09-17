@@ -329,13 +329,20 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                     $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="3">' . rex_escape($fieldValue) . '</textarea>';
                 } elseif ('select' === $fieldDef['type']) {
                     $options = isset($fieldDef['options']) && is_array($fieldDef['options']) ? $fieldDef['options'] : [];
+                    $optionData = isset($fieldDef['option_data']) && is_array($fieldDef['option_data']) ? $fieldDef['option_data'] : [];
                     $optionsHtml = '';
                     if (empty($fieldDef['required'])) {
                         $optionsHtml .= '<option value="">–</option>';
                     }
                     foreach ($options as $optValue => $optLabel) {
                         $optValue = (string) $optValue;
-                        $optionsHtml .= '<option value="' . rex_escape($optValue) . '"' . ($optValue === (string) $fieldValue ? ' selected' : '') . '>' . rex_escape((string) $optLabel) . '</option>';
+                        $attrs = '';
+                        if (isset($optionData[$optValue]) && is_array($optionData[$optValue])) {
+                            foreach ($optionData[$optValue] as $attrName => $attrVal) {
+                                $attrs .= ' ' . rex_escape((string) $attrName) . '="' . rex_escape((string) $attrVal) . '"';
+                            }
+                        }
+                        $optionsHtml .= '<option value="' . rex_escape($optValue) . '"' . ($optValue === (string) $fieldValue ? ' selected' : '') . $attrs . '>' . rex_escape((string) $optLabel) . '</option>';
                     }
                     $n['field'] = '<select class="form-control selectpicker" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '">' . $optionsHtml . '</select>';
                 } elseif ('api_key' === $fieldName && '' !== $fieldValue && !$isFormPost) {
@@ -454,12 +461,13 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         if (!sel || !keyInput || !labelInput) {
             return;
         }
+        var maxChars = document.getElementById('vtrans-connection-max-chars');
         function slug(text) {
             return text.toString().toLowerCase()
                 .replace(/[^a-z0-9]+/g, '-')
                 .replace(/^-+|-+$/g, '');
         }
-        function apply() {
+        function apply(isUserChange) {
             var opt = sel.options[sel.selectedIndex];
             if (!opt || '' === opt.value) {
                 return;
@@ -472,12 +480,21 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                 var key = slug(name);
                 keyInput.value = '' !== key ? key : ('ki-platform-' + opt.value);
             }
+            if (maxChars) {
+                var mt = parseInt(opt.getAttribute('data-max-tokens') || '', 10);
+                // Derive the "max characters" guideline from the profile's max_tokens
+                // (~4 characters per output token). Overwrite on a user change; on load
+                // only fill an empty field so a stored value survives.
+                if (mt > 0 && (isUserChange || '' === maxChars.value.trim())) {
+                    maxChars.value = String(mt * 4);
+                }
+            }
         }
-        sel.addEventListener('change', apply);
+        sel.addEventListener('change', function () { apply(true); });
         if (window.jQuery) {
-            window.jQuery(sel).on('changed.bs.select', apply);
+            window.jQuery(sel).on('changed.bs.select', function () { apply(true); });
         }
-        apply();
+        apply(false);
     }
     function initSanitizeToggle() {
         var cb = document.getElementById('vtrans-connection-sanitize-html');
