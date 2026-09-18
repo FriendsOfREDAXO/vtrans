@@ -44,7 +44,7 @@ interface VTransProviderInterface
 	 * Fields with 'column' => true map to a dedicated DB column on rex_vtrans_agent,
 	 * others are stored in the JSON params field.
 	 *
-	 * @return array<string, array{type: string, label: string, required?: bool, column?: bool, default?: mixed, note?: string}>
+	 * @return array<string, array{type: string, label: string, required?: bool, column?: bool, default?: mixed, note?: string, options?: array<int|string, string>, option_data?: array<int|string, array<string, string>>}>
 	 */
 	public function getConfigFields(): array;
 
