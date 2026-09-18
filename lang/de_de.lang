@@ -170,3 +170,5 @@ vtrans_connections_ai_profile_note_empty = Aktives Text-Profil aus KI Platform. 
 vtrans_connections_ai_profile_required = Bitte ein KI-Platform-Text-Profil auswählen.
 vtrans_connections_ai_profile_invalid = Kein aktives KI-Platform-Profil mit dieser ID gefunden.
 vtrans_connections_ai_profile_not_text = Das gewählte KI-Platform-Profil ist kein Text-Profil.
+vtrans_connections_ai_systemprompt = System-Prompt (optional)
+vtrans_connections_ai_systemprompt_note = Eigene Übersetzungs-Anweisungen (Ton, Terminologie). Werden in den vTrans-Cache-Hash aufgenommen — eine Änderung erneuert zwischengespeicherte Übersetzungen. Der System-Prompt des KI-Platform-Profils wird hier bewusst nicht verwendet.

@@ -49,14 +49,16 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 			throw new rex_exception('ai_platform profile ' . $config['profileId'] . ' is not a text profile.');
 		}
 
-		// The profile's own system prompt carries the reusable instructions (tone, brand
-		// rules); the per-call translation directive (source→target, format) is merged on
-		// top of it, since the profile cannot know those values.
+		// The translation directive (source→target, format) is fixed and deterministic.
+		// Any custom instructions come from the vTrans connection's system-prompt field,
+		// passed here as promptContext — vTrans folds that into its cache hash, so a prompt
+		// change invalidates cached translations. The ai_platform profile's own system
+		// prompt is intentionally NOT mixed in: vTrans cannot see it and would keep serving
+		// stale cached translations when it changes.
 		$systemPrompt = $this->buildSystemPrompt(
 			$srcLang,
 			$targetLang,
 			$format,
-			$this->normalizeString($profile['system_prompt'] ?? ''),
 			$this->normalizeString($requestOptions['promptContext'] ?? null)
 		);
 
@@ -213,6 +215,7 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	{
 		return [
 			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'option_data' => $this->profileOptionData(), 'note' => $this->profileHint()],
+			'system_prompt' => ['type' => 'textarea', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt'), 'required' => false, 'column' => true, 'note' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt_note')],
 		];
 	}
 
@@ -278,10 +281,13 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	}
 
 	/**
-	 * Build the per-call system prompt: the translation directive first, then the
-	 * profile's own system prompt (its reusable instructions) as additional guidance.
+	 * Build the per-call system prompt: the fixed translation directive plus the vTrans
+	 * connection's system prompt (passed as promptContext). The ai_platform profile's own
+	 * system prompt is deliberately excluded — vTrans folds the connection prompt into its
+	 * cache hash, so keeping the effective prompt on the vTrans side is what lets a prompt
+	 * change invalidate cached translations.
 	 */
-	private function buildSystemPrompt(?string $srcLang, string $targetLang, string $format, string $profileSystemPrompt, string $promptContext): string
+	private function buildSystemPrompt(?string $srcLang, string $targetLang, string $format, string $promptContext): string
 	{
 		$source = null !== $srcLang && '' !== trim($srcLang) ? trim($srcLang) : 'auto-detect';
 		$formatInstruction = match ($format) {
@@ -296,14 +302,9 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 			'Return only the translated text, without explanations, quotes, markdown fences, or extra comments.',
 		];
 
-		$profileSystemPrompt = trim($profileSystemPrompt);
-		if ('' !== $profileSystemPrompt) {
-			$systemParts[] = "Additional instructions:\n" . $profileSystemPrompt;
-		}
-
 		$promptContext = trim($promptContext);
-		if ('' !== $promptContext && $promptContext !== $profileSystemPrompt) {
-			$systemParts[] = "Context:\n" . $promptContext;
+		if ('' !== $promptContext) {
+			$systemParts[] = "Additional instructions:\n" . $promptContext;
 		}
 
 		return implode("\n\n", $systemParts);

@@ -107,7 +107,7 @@ Hinweise:
 - `ai_platform`
 - Nutzt ein **Text-Profil** des Addons [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform), statt einen LLM-Endpunkt direkt aufzurufen
 - Provider, Modell, API-Key, Temperature und Token-Grenzen werden komplett im ai_platform-Profil verwaltet — die vTrans-Verbindung wählt nur das Profil aus
-- Übersetzungs-Anweisungen kommen aus dem `system_prompt` des Profils; vTrans ergänzt pro Aufruf die Übersetzungsdirektive (Quelle→Ziel, HTML/Text)
+- Eigene Übersetzungs-Anweisungen gehören in das Feld **System-Prompt** der vTrans-Verbindung, nicht ins ai_platform-Profil: vTrans nimmt den Verbindungs-Prompt in seinen Cache-Hash auf, sodass eine Änderung den Cache erneuert. Der `system_prompt` des Profils wird hier bewusst **nicht** angewendet — vTrans sieht ihn nicht und würde sonst bei einer Änderung veraltete Übersetzungen aus dem Cache liefern. vTrans ergänzt immer die Übersetzungsdirektive pro Aufruf (Quelle→Ziel, HTML/Text)
 - Benötigt das Addon `ai_platform`; ohne es ist der Provider inaktiv (leere Profil-Auswahl, klare Fehlermeldung bei Nutzung)
 
 ### Fake Local
