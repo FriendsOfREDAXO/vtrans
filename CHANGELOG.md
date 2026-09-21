@@ -12,6 +12,7 @@ Breaking changes may still occur until `1.0.0` is tagged.
 
 ### Changed
 - The connection form hides "Zusätzlich erlauben" (`sanitize_allow_extra`) while HTML sanitisation is off, since it has no effect then; the stored value is kept. Contributed by [@TobiasKrais](https://github.com/TobiasKrais) ([#14](https://github.com/FriendsOfREDAXO/vtrans/pull/14)).
+- README formatting: blank lines around headings and lists, linked support URLs — in both the English and the German README. Contributed by [@TobiasKrais](https://github.com/TobiasKrais) ([#15](https://github.com/FriendsOfREDAXO/vtrans/pull/15)).
 
 ## [1.0.0-beta4] - 2026-09-21
 

@@ -114,6 +114,7 @@ Notes:
 - Supports `context` and `customInstructions`; system prompt with placeholders, see [System prompt](#system-prompt-llm-providers)
 
 ### AI Platform (ai_platform addon)
+
 - `ai_platform`
 - Delegates to a **text profile** of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon instead of calling an LLM endpoint directly
 - Provider, model, API key, temperature and token limits are all managed in the ai_platform profile — the vTrans connection only selects the profile
@@ -448,8 +449,8 @@ connection:
 
 ## Support
 
-- Project: [vTrans Github](https://github.com/FriendsOfREDAXO/vtrans)
-- Community: [Redaxo](https://www.redaxo.org)
+- Project: [vTrans on GitHub](https://github.com/FriendsOfREDAXO/vtrans)
+- Community: [REDAXO](https://www.redaxo.org)
 - Slack: [FOR Slack Channel](https://friendsofredaxo.slack.com/)
 
 ## Credits

@@ -17,6 +17,7 @@ z. B. Zusammenfassen, Umformulieren oder inhaltliche Bearbeitung von Texten.
 Über den REDAXO-Installer installieren oder manuell nach `redaxo/src/addons/vtrans` kopieren und anschließend im Backend aktivieren.
 
 **Voraussetzungen:**
+
 - REDAXO >= 5.17.0
 - PHP >= 8.2
 
@@ -31,8 +32,8 @@ z. B. Zusammenfassen, Umformulieren oder inhaltliche Bearbeitung von Texten.
 5. `vTrans -> Playground` öffnen und testen.
 6. Template Beispiel ansehenn, ausprobieren. Damit wird das Konzept am schnellsten klar.
 
-
 Beispiel für eine DeepL-Free-Verbindung:
+
 - Key: `deepl_free`
 - Label: `DeepL Free`
 - Provider: `deepl-api-free-v2`
@@ -40,6 +41,7 @@ Beispiel für eine DeepL-Free-Verbindung:
 - API Key: `DEIN_DEEPL_KEY`
 
 Hinweise:
+
 - Free-Keys gehören zur Free-API-URL `https://api-free.deepl.com/v2/translate`.
 - Die Standard-Connection wird automatisch verwendet, wenn beim Aufruf kein `connection`-Wert übergeben wird.
 
@@ -60,6 +62,7 @@ Hinweise:
 ## Unterstützte Provider / APIs
 
 ### DeepL
+
 - Branchenprimus mit sehr guter Qualität bei gängigen Sprachen
 - `deepl-api-free-v2`
 - `deepl-api-pro-v2`
@@ -68,22 +71,26 @@ Hinweise:
 > Hinweis: Leider gibt es den Free-Plan (mit monatlich 500k Zeichen) von deepL nicht mehr. Zum Testen oder später als kostengünstige Alternative habe ich einen DeepL-kompatiblen Server aufgesetzt. Bei Interesse gerne melden!
 
 ### Amazon Translate
+
 - Gute bis sehr gute Übersetzungsqualität
 - `amazon-translate-v1`
 - API-Key-/Credential-basiert je nach Provider-Implementierung
 
 ### Google Translate Basic v2
+
 - Gute bis sehr gute Übersetzungsqualität
 - `google-translate-basic-v2`
 - API-Key-basiert
 - Keine Prompt-Optionen
 
 ### Google Translate v3
+
 - Sehr gute Übersetzungsqualität
 - Service-Account / OAuth-basiert
 - Keine Prompt-Optionen
 
 ### LibreTranslate
+
 - Gute Qualität - ausreichend für die meisten Zwecke
 - Open-Source - kann auch selbst gehostet werden 
 - `libretranslate-v1`
@@ -91,6 +98,7 @@ Hinweise:
 - Keine Prompt-Optionen
 
 ### MyMemory
+
 - Einfache, eher technische Übersetzung
 - `mymemory-v2`
 - Endpoint-basiert (Standard: `https://api.mymemory.translated.net/get`)
@@ -98,12 +106,14 @@ Hinweise:
 - Keine Prompt-Optionen
 
 ### OpenAI-kompatible LLMs
+
 - Je nach Modell - flexibel einsetzbar.
 - `openai`
 - Frei konfigurierbare Endpunkte und Parameter
 - Unterstützt `context` und `customInstructions`; System-Prompt mit Platzhaltern, siehe [System-Prompt](#system-prompt-llm-provider)
 
 ### KI Platform (Addon ai_platform)
+
 - `ai_platform`
 - Nutzt ein **Text-Profil** des Addons [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform), statt einen LLM-Endpunkt direkt aufzurufen
 - Provider, Modell, API-Key, Temperature und Token-Grenzen werden komplett im ai_platform-Profil verwaltet — die vTrans-Verbindung wählt nur das Profil aus
@@ -113,6 +123,7 @@ Hinweise:
 - Benötigt das Addon `ai_platform`; ohne es ist der Provider inaktiv (leere Profil-Auswahl, klare Fehlermeldung bei Nutzung)
 
 ### Fake Local
+
 - praktisch während der Entwicklung
 - Erzeugt einfaches "Kauderwelsch" um die Funktion zu testen
 - nur lokal - keine API - keine Kosten
@@ -120,6 +131,7 @@ Hinweise:
 ---
 
 ## Kosten
+
 Die Kosten der jeweiligen Provider sind sehr unterscheidlich und setzen sich meistens aus einer monatlichen Grundgebühr (Abo) und Kosten je 1 Mio Zeichen zusammen. Oft gibt es auch kostenlose oder inkludierte Kontingente. Das muss jeder selbst vergleichen. LibreTranslate kann auf entsprechender Hardware auch selbst gehostet werden. Für eine umfangreiche Webseite muss man je Sprache mit 20–50 EUR rechnen (natürlich nur ganz grob)
 
 ## Konfiguration
@@ -136,6 +148,7 @@ Die Konfiguration erfolgt über die Backend-Seite `Connections`. Dort werden Ver
 - verschiedene providerspezifische Parameter
 
 Hinweise:
+
 - Die Standard-Connection wird automatisch verwendet, wenn bei der Abfrage keine individuelle `Connection` definiert ist.
 - Die Standard-Connection und auch die Verfügbarkeit im Playground kann in der Connections-Übersicht schnell umgeschaltet werden
 
@@ -175,6 +188,7 @@ Der Prompt ist Teil des Cache-Hashs; eine Änderung erneuert zwischengespeichert
 Hier lassen sich Abrufe manuell testen.
 
 ### Eingaben
+
 - Verbindung
 - Quell- und Zielsprache
 - Format (`text` oder `html`)
@@ -437,8 +451,8 @@ Verbindung geschrieben wird:
 
 ## Support
 
-- Projekt: https://github.com/FriendsOfREDAXO/vtrans
-- Community: https://www.redaxo.org
+- Projekt: [vTrans auf GitHub](https://github.com/FriendsOfREDAXO/vtrans)
+- Community: [REDAXO](https://www.redaxo.org)
 - Slack: [FOR Slack Channel](https://friendsofredaxo.slack.com/)
 
 ## Credits
