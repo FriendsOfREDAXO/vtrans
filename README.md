@@ -4,7 +4,7 @@ vTrans bundles several text-processing APIs behind a single interface,
 stores the results in the database, and provides backend pages for testing,
 analysis, and maintenance.
 
-The primary use case is translation. With LLM-based providers (for example the OpenAI provider),
+The primary use case is translation. With LLM-based providers (the OpenAI provider or ai_platform),
 it can also be used for other scenarios where the source and target language are the same,
 for example summarizing, rephrasing, or editing content.
 
@@ -111,7 +111,16 @@ Notes:
 - Flexible depending on the model
 - `openai`
 - Freely configurable endpoints and parameters
-- Supports `context` and `customInstructions`
+- Supports `context` and `customInstructions`; system prompt with placeholders, see [System prompt](#system-prompt-llm-providers)
+
+### AI Platform (ai_platform addon)
+- `ai_platform`
+- Delegates to a **text profile** of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon instead of calling an LLM endpoint directly
+- Provider, model, API key, temperature and token limits are all managed in the ai_platform profile — the vTrans connection only selects the profile
+- The prompt comes from the vTrans connection and works exactly as for `openai`, see [System prompt](#system-prompt-llm-providers). Supports `context` and `customInstructions`
+- The ai_platform profile's own `system_prompt` is deliberately **not** used: vTrans cannot see it, so changing it would not refresh cached translations. The connection prompt is part of the cache hash
+- The connection has no timeout of its own: the HTTP call is made by ai_platform
+- Requires the `ai_platform` addon; without it the provider is inert (empty profile select, clear error on use)
 
 ### Fake Local
 
@@ -142,6 +151,35 @@ Notes:
 
 - The default connection is used automatically when no individual `Connection` is defined in the request.
 - The default connection and availability in the Playground can be switched quickly in the Connections overview.
+
+### System prompt (LLM providers)
+
+Leave the **System-Prompt** field empty and vTrans sends its default prompt, which the form shows greyed out:
+
+```
+You are a professional translation engine.
+Translate from {source_lang_name} to {target_lang_name}.
+Return only the translated text, without explanations, quotes, markdown fences, or extra comments.
+```
+
+A prompt of your own **replaces** it entirely. These placeholders are filled in per request:
+
+| Placeholder | Example |
+|---|---|
+| `{source_lang}` | `DE` (`auto` when detecting) |
+| `{target_lang}` | `EN-GB` |
+| `{source_lang_name}` | `German` |
+| `{target_lang_name}` | `English – British` |
+
+Name the target language in your prompt, preferably as `{target_lang_name}` — models handle names more reliably than codes. The form warns on save when neither target placeholder is present.
+
+vTrans always appends the following, whatever the prompt says:
+
+1. The format rule — plain text, or for HTML: keep the markup and the `<vtrans-ph>` placeholders, which vTrans needs to restore excluded regions.
+2. `context` of the request, as `Context:`.
+3. `customInstructions` of the request, as a list.
+
+The prompt is part of the cache hash; changing it refreshes cached translations.
 
 ---
 
@@ -418,6 +456,7 @@ connection:
 
 - Friends Of REDAXO
 - [Matthias Weiss / VIEWSION.net](https://github.com/VIEWSION) (Lead)
+- [Tobias Krais](https://github.com/TobiasKrais) (ai_platform provider)
 
 ---
 

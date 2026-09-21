@@ -1,0 +1,382 @@
+<?php
+
+namespace FriendsOfRedaxo\VTrans\Provider;
+
+use FriendsOfRedaxo\VTrans\VTransProviderInterface;
+use FriendsOfRedaxo\VTrans\VTransPrompt;
+use FriendsOfRedaxo\VTrans\VTransProviderResult;
+use rex_addon;
+use rex_exception;
+use rex_i18n;
+
+/**
+ * Translation provider that delegates to the ai_platform addon.
+ *
+ * Instead of talking to an LLM endpoint directly, this provider hands the
+ * translation prompt to a configured ai_platform text profile. Provider, model,
+ * API key and invoke options all live in that profile — this class only supplies
+ * the profile id and the translation instructions.
+ */
+class VTransAiPlatformProvider implements VTransProviderInterface
+{
+	/** @var array<string, mixed> */
+	private array $lastDebugData = [];
+
+	/** @var list<array<string, mixed>>|null */
+	private ?array $textProfiles = null;
+
+	public function supports(string $api): bool
+	{
+		return 'ai_platform' === $api;
+	}
+
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @param array<string, mixed> $requestOptions
+	 */
+	public function translate(string $text, ?string $srcLang, string $targetLang, string $format, array $modelData, array $requestOptions = []): VTransProviderResult
+	{
+		$debug = (bool) ($requestOptions['debug'] ?? false);
+		$config = $this->normalizeConfig($this->normalizeModelConfig($modelData['config'] ?? []));
+
+		if (!$this->isAiPlatformAvailable()) {
+			throw new rex_exception('The ai_platform addon is not installed or not available.');
+		}
+
+		$service = \FriendsOfRedaxo\AiPlatform\Service::getInstance();
+
+		$profile = $service->getProfile($config['profileId']);
+		if (null === $profile) {
+			throw new rex_exception('ai_platform text profile not found or inactive: ' . $config['profileId']);
+		}
+		if ('text' !== ($profile['type'] ?? '')) {
+			throw new rex_exception('ai_platform profile ' . $config['profileId'] . ' is not a text profile.');
+		}
+
+		// The prompt comes from the vTrans connection, built the same way as for the
+		// openai provider. The ai_platform profile's own system prompt is intentionally
+		// not used: vTrans cannot see it, so a change there would not refresh the cache,
+		// whereas the connection prompt is part of the cache hash.
+		$systemPrompt = VTransPrompt::build(
+			$config['systemPrompt'],
+			$srcLang,
+			$targetLang,
+			$format,
+			$this->normalizeString($requestOptions['promptContext'] ?? null),
+			$this->normalizeInstructions($requestOptions['customInstructions'] ?? []),
+			$this->getAvailableSourceLanguages() + $this->getAvailableTargetLanguages()
+		);
+
+		$this->lastDebugData = [
+			'request' => [
+				'provider' => 'ai_platform',
+				'profile_id' => $config['profileId'],
+				'profile_name' => $this->normalizeString($profile['name'] ?? ''),
+				'ai_provider' => $this->normalizeString($profile['provider'] ?? ''),
+				'model' => $this->normalizeString($profile['model'] ?? ''),
+				'format' => $format,
+				'system_prompt' => $systemPrompt,
+			],
+		];
+
+		try {
+			$translation = trim($service->generateText($this->normalizeString($text), $systemPrompt, $config['profileId']));
+		} catch (\Throwable $e) {
+			throw new rex_exception('ai_platform translation failed: ' . $e->getMessage(), $e instanceof \Exception ? $e : null);
+		}
+
+		if ('' === $translation) {
+			throw new rex_exception('ai_platform returned an empty translation response.');
+		}
+
+		$this->lastDebugData['response'] = [
+			'text' => $translation,
+		];
+
+		$resultData = [
+			'model' => $modelData['key'] ?? '',
+			'api' => 'ai_platform',
+			'provider_model' => $this->normalizeString($profile['model'] ?? ''),
+			'ai_provider' => $this->normalizeString($profile['provider'] ?? ''),
+			'profile_id' => $config['profileId'],
+			'format' => $format,
+			'usage' => null,
+		];
+
+		if ($debug) {
+			$resultData['_debug'] = $this->lastDebugData;
+		}
+
+		return new VTransProviderResult($translation, $resultData);
+	}
+
+	/**
+	 * @param array<string, mixed> $modelData
+	 * @return array<string, mixed>
+	 */
+	public function getUsage(array $modelData): array
+	{
+		$config = $this->normalizeModelConfig($modelData['config'] ?? []);
+
+		return [
+			'provider' => 'ai_platform',
+			'model' => $this->normalizeString($modelData['key'] ?? null),
+			'api' => 'ai_platform',
+			'profile_id' => $this->normalizeInt($config['profile_id'] ?? null, 0),
+			'usage_supported' => false,
+			'character' => null,
+		];
+	}
+
+	public function getAvailableSourceLanguages(): array
+	{
+		return [
+			'auto'  => 'Automatic',
+			'af'    => 'Afrikaans (AF)',
+			'ar'    => 'Arabic (AR)',
+			'bg'    => 'Bulgarian (BG)',
+			'bn'    => 'Bengali (BN)',
+			'ca'    => 'Catalan (CA)',
+			'cs'    => 'Czech (CS)',
+			'cy'    => 'Welsh (CY)',
+			'da'    => 'Danish (DA)',
+			'de'    => 'German (DE)',
+			'el'    => 'Greek (EL)',
+			'en'    => 'English (EN)',
+			'eo'    => 'Esperanto (EO)',
+			'es'    => 'Spanish (ES)',
+			'et'    => 'Estonian (ET)',
+			'eu'    => 'Basque (EU)',
+			'fa'    => 'Persian (FA)',
+			'fi'    => 'Finnish (FI)',
+			'fr'    => 'French (FR)',
+			'ga'    => 'Irish (GA)',
+			'gl'    => 'Galician (GL)',
+			'gu'    => 'Gujarati (GU)',
+			'he'    => 'Hebrew (HE)',
+			'hi'    => 'Hindi (HI)',
+			'hr'    => 'Croatian (HR)',
+			'hu'    => 'Hungarian (HU)',
+			'hy'    => 'Armenian (HY)',
+			'id'    => 'Indonesian (ID)',
+			'is'    => 'Icelandic (IS)',
+			'it'    => 'Italian (IT)',
+			'ja'    => 'Japanese (JA)',
+			'ko'    => 'Korean (KO)',
+			'lt'    => 'Lithuanian (LT)',
+			'lv'    => 'Latvian (LV)',
+			'mk'    => 'Macedonian (MK)',
+			'ms'    => 'Malay (MS)',
+			'mt'    => 'Maltese (MT)',
+			'nb'    => 'Norwegian – Bokmål (NB)',
+			'nl'    => 'Dutch (NL)',
+			'pl'    => 'Polish (PL)',
+			'pt'    => 'Portuguese (PT)',
+			'ro'    => 'Romanian (RO)',
+			'ru'    => 'Russian (RU)',
+			'sk'    => 'Slovak (SK)',
+			'sl'    => 'Slovenian (SL)',
+			'sq'    => 'Albanian (SQ)',
+			'sr'    => 'Serbian (SR)',
+			'sv'    => 'Swedish (SV)',
+			'sw'    => 'Swahili (SW)',
+			'ta'    => 'Tamil (TA)',
+			'te'    => 'Telugu (TE)',
+			'th'    => 'Thai (TH)',
+			'tl'    => 'Filipino (TL)',
+			'tr'    => 'Turkish (TR)',
+			'uk'    => 'Ukrainian (UK)',
+			'ur'    => 'Urdu (UR)',
+			'vi'    => 'Vietnamese (VI)',
+			'zh'    => 'Chinese – Simplified (ZH)',
+			'zh-tw' => 'Chinese – Traditional (ZH-TW)',
+		];
+	}
+
+	public function getAvailableTargetLanguages(): array
+	{
+		$langs = $this->getAvailableSourceLanguages();
+		unset($langs['auto']);
+		return $langs;
+	}
+
+	public function getDefaultTargetLanguage(): string
+	{
+		return 'en';
+	}
+
+	public function getProviderLabel(): string
+	{
+		return rex_i18n::rawMsg('vtrans_provider_ai_platform');
+	}
+
+	/** @return list<string> */
+	public function getApiIdentifiers(): array
+	{
+		return ['ai_platform'];
+	}
+
+	public function getConfigFields(): array
+	{
+		return [
+			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'note' => $this->profileHint()],
+			'system_prompt' => ['type' => 'textarea', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt'), 'required' => false, 'column' => true, 'default' => VTransPrompt::DEFAULT_TEMPLATE, 'note' => rex_i18n::rawMsg('vtrans_connections_system_prompt_note')],
+			// The HTTP call is made by ai_platform, which does not take a timeout from here.
+			'timeout' => ['type' => 'number', 'label' => 'Timeout (s)', 'column' => true, 'hidden' => true],
+		];
+	}
+
+	/** @param array<string, mixed> $values @return array<string, string> */
+	public function validateConfig(array $values): array
+	{
+		$errors = [];
+		$profileId = $this->normalizeInt($values['profile_id'] ?? null, 0);
+		if ($profileId <= 0) {
+			$errors['profile_id'] = rex_i18n::rawMsg('vtrans_connections_ai_profile_required');
+		} elseif ($this->isAiPlatformAvailable()) {
+			$profile = \FriendsOfRedaxo\AiPlatform\Service::getInstance()->getProfile($profileId);
+			if (null === $profile) {
+				$errors['profile_id'] = rex_i18n::rawMsg('vtrans_connections_ai_profile_invalid');
+			} elseif ('text' !== ($profile['type'] ?? '')) {
+				$errors['profile_id'] = rex_i18n::rawMsg('vtrans_connections_ai_profile_not_text');
+			}
+		}
+		return $errors;
+	}
+
+	/** @return array<string, mixed> */
+	public function getLastDebugData(): array
+	{
+		return $this->lastDebugData;
+	}
+
+	private function isAiPlatformAvailable(): bool
+	{
+		return rex_addon::get('ai_platform')->isAvailable()
+			&& class_exists(\FriendsOfRedaxo\AiPlatform\Service::class);
+	}
+
+	/**
+	 * @param array<string, mixed> $modelConfig
+	 * @return array{profileId: int, systemPrompt: string}
+	 */
+	private function normalizeConfig(array $modelConfig): array
+	{
+		$profileId = $this->normalizeInt($modelConfig['profile_id'] ?? null, 0);
+		if ($profileId <= 0) {
+			throw new rex_exception('ai_platform provider requires a valid profile_id in the connection configuration.');
+		}
+
+		return [
+			'profileId' => $profileId,
+			'systemPrompt' => $this->normalizeString($modelConfig['systemPrompt'] ?? null),
+		];
+	}
+
+	/** @return array<string, mixed> */
+	private function normalizeModelConfig(mixed $config): array
+	{
+		if (!is_array($config)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($config as $key => $value) {
+			$normalized[is_string($key) ? $key : (string) $key] = $value;
+		}
+
+		return $normalized;
+	}
+
+	/**
+	 * Options for the profile select: text profiles keyed by id.
+	 *
+	 * @return array<int|string, string>
+	 */
+	private function profileOptions(): array
+	{
+		$options = [];
+		foreach ($this->getTextProfiles() as $profile) {
+			$id = $this->normalizeInt($profile['id'] ?? null, 0);
+			if ($id <= 0) {
+				continue;
+			}
+			$name = $this->normalizeString($profile['name'] ?? '');
+			$providerModel = trim($this->normalizeString($profile['provider'] ?? '') . ' / ' . $this->normalizeString($profile['model'] ?? ''), ' /');
+			$options[(string) $id] = $name . ('' !== $providerModel ? ' (' . $providerModel . ')' : '');
+		}
+
+		return $options;
+	}
+
+
+	/**
+	 * Active text profiles, loaded once per request: getConfigFields() needs them for
+	 * the options and the hint, and the form calls it on render and on save.
+	 *
+	 * @return list<array<string, mixed>>
+	 */
+	private function getTextProfiles(): array
+	{
+		if (null === $this->textProfiles) {
+			$this->textProfiles = $this->isAiPlatformAvailable()
+				? \FriendsOfRedaxo\AiPlatform\Service::getInstance()->getProfiles('text')
+				: [];
+		}
+
+		return $this->textProfiles;
+	}
+
+	private function profileHint(): string
+	{
+		if (!$this->isAiPlatformAvailable()) {
+			return rex_i18n::rawMsg('vtrans_connections_ai_profile_note_unavailable');
+		}
+
+		if ([] === $this->profileOptions()) {
+			return rex_i18n::rawMsg('vtrans_connections_ai_profile_note_empty');
+		}
+
+		return rex_i18n::rawMsg('vtrans_connections_ai_profile_note');
+	}
+
+	/** @return list<string> */
+	private function normalizeInstructions(mixed $instructions): array
+	{
+		if (!is_array($instructions)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($instructions as $instruction) {
+			$instruction = trim($this->normalizeString($instruction));
+			if ('' !== $instruction) {
+				$normalized[] = $instruction;
+			}
+		}
+
+		return $normalized;
+	}
+
+	private function normalizeString(mixed $value): string
+	{
+		return is_string($value) ? $value : '';
+	}
+
+	private function normalizeInt(mixed $value, int $default): int
+	{
+		if (is_int($value)) {
+			return $value;
+		}
+
+		if (is_string($value) && is_numeric($value)) {
+			return (int) $value;
+		}
+
+		if (is_float($value)) {
+			return (int) $value;
+		}
+
+		return $default;
+	}
+}

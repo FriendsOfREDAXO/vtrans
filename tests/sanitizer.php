@@ -10,13 +10,15 @@
  *
  * It covers what is easy to break and expensive to notice: excluded regions
  * must survive sanitisation with their event handlers, ordinary translated
- * text must not.
+ * text must not. It also checks VTransPrompt, whose HTML rule keeps the
+ * placeholders the filter relies on.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
 
 use FriendsOfRedaxo\VTrans\VTransConnection;
 use FriendsOfRedaxo\VTrans\VTransHtmlFilter;
+use FriendsOfRedaxo\VTrans\VTransPrompt;
 use FriendsOfRedaxo\VTrans\VTransSanitizer;
 
 $failures = 0;
@@ -144,6 +146,29 @@ $assert('element not listed is still removed', !str_contains($out, '<iframe'), '
 
 $parsed = VTransSanitizer::parseAllowExtra('onclick, <iframe>; data-action  !!bogus!!');
 $assert('parser splits elements and attributes', ['iframe'] === $parsed['elements'] && ['onclick', 'data-action'] === $parsed['attributes'], print_r($parsed, true));
+
+echo "\n6) VTransPrompt: a configured prompt replaces the default, placeholders resolve, the format rule stays\n";
+
+$labels = ['de' => 'German (DE)', 'en-gb' => 'English – British (EN-GB)'];
+
+$out = VTransPrompt::build('', 'DE', 'EN-GB', 'text', '', [], $labels);
+$assert('default names both languages', str_contains($out, 'Translate from German to English – British.'), 'got: ' . $out);
+
+$out = VTransPrompt::build('Übersetze nach {target_lang_name} ({target_lang}).', 'DE', 'EN-GB', 'text', '', [], $labels);
+$assert('custom prompt replaces the default', !str_contains($out, 'professional translation engine'), 'got: ' . $out);
+$assert('placeholders resolve', str_starts_with($out, 'Übersetze nach English – British (EN-GB).'), 'got: ' . $out);
+
+$out = VTransPrompt::build('Nach {target_lang_name}.', 'DE', 'EN-GB', 'html', '', [], $labels);
+$assert('HTML rule survives a custom prompt', str_contains($out, '<vtrans-ph>'), 'got: ' . $out);
+
+$out = VTransPrompt::build('Von {source_lang_name} nach {target_lang}.', null, 'FR', 'text', '', [], $labels);
+$assert('missing source and unknown label fall back', str_contains($out, 'Von the source language (detect it) nach FR.'), 'got: ' . $out);
+
+$out = VTransPrompt::build('Nach {target_lang}.', 'DE', 'EN-GB', 'text', "Nach {target_lang}.\n\nHotel website", ['Be brief'], $labels);
+$assert('connection prompt is not repeated as context', 1 === substr_count($out, 'Nach EN-GB.') && str_contains($out, "Context:\nHotel website"), 'got: ' . $out);
+$assert('instructions use real line breaks', str_contains($out, "Additional instructions:\n- Be brief") && !str_contains($out, '\\n'), 'got: ' . $out);
+
+$assert('prompt without target language is flagged', !VTransPrompt::mentionsTargetLanguage('Be formal.') && VTransPrompt::mentionsTargetLanguage('Into {target_lang_name}.'));
 
 echo "\n" . (0 === $failures ? "All checks passed.\n" : $failures . " check(s) failed.\n");
 

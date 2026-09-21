@@ -42,9 +42,11 @@ interface VTransProviderInterface
 	 *
 	 * Returns an array of field definitions. Each key is the field name.
 	 * Fields with 'column' => true map to a dedicated DB column on rex_vtrans_agent,
-	 * others are stored in the JSON params field.
+	 * others are stored in the JSON params field. 'options' feeds a 'select' field;
+	 * 'hidden' => true on 'timeout' hides the dedicated timeout input for providers
+	 * that make no HTTP call of their own.
 	 *
-	 * @return array<string, array{type: string, label: string, required?: bool, column?: bool, default?: mixed, note?: string}>
+	 * @return array<string, array{type: string, label: string, required?: bool, column?: bool, default?: mixed, note?: string, options?: array<int|string, string>, hidden?: bool}>
 	 */
 	public function getConfigFields(): array;
 

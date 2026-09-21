@@ -4,12 +4,14 @@ namespace FriendsOfRedaxo\VTrans\Provider;
 
 use FriendsOfRedaxo\VTrans\VTransProviderInterface;
 use FriendsOfRedaxo\VTrans\VTransProviderResult;
+use FriendsOfRedaxo\VTrans\VTransPrompt;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Middleware;
 use rex_exception;
+use rex_i18n;
 
 /**
  * Generic OpenAI chat-completions provider.
@@ -356,49 +358,18 @@ class VTransOpenAIProvider implements VTransProviderInterface
 	 */
 	private function buildMessages(string $text, ?string $srcLang, string $targetLang, string $format, string $systemPrompt, string $promptContext, string|array $customInstructions): array
 	{
-		$source = null !== $srcLang && '' !== trim($srcLang) ? trim($srcLang) : 'auto-detect';
-		$formatInstruction = match ($format) {
-			'html' => 'Input is HTML. Preserve HTML tags, attributes and structure. Translate only user-visible text.',
-			default => 'Input is plain text. Return plain text only.',
-		};
-
-		$instructionLines = $this->normalizeCustomInstructions($customInstructions);
-
-		$systemPrompt = trim($systemPrompt);
-		$systemParts = [];
-		if ('' !== $systemPrompt) {
-			// Configured systemPrompt replaces the built-in default system prompt entirely.
-			$systemParts[] = $systemPrompt;
-		} else {
-			$systemParts = [
-				'You are a professional translation engine.',
-				'Translate from ' . $source . ' to ' . $targetLang . '.',
-				$formatInstruction,
-				'Return only the translated text, without explanations, quotes, markdown fences, or extra comments.',
-			];
-		}
-
-		$promptContext = trim($promptContext);
-		if ('' !== $systemPrompt && '' !== $promptContext) {
-			if ($promptContext === $systemPrompt) {
-				$promptContext = '';
-			} elseif (str_starts_with($promptContext, $systemPrompt . "\n\n")) {
-				$promptContext = trim(substr($promptContext, strlen($systemPrompt . "\n\n")));
-			}
-		}
-
-		if ('' !== $promptContext) {
-			$systemParts[] = 'Context:\n' . $promptContext;
-		}
-
-		if ([] !== $instructionLines) {
-			$systemParts[] = 'Additional instructions:\n- ' . implode("\n- ", $instructionLines);
-		}
-
 		return [
 			[
 				'role' => 'system',
-				'content' => implode("\n\n", $systemParts),
+				'content' => VTransPrompt::build(
+					$systemPrompt,
+					$srcLang,
+					$targetLang,
+					$format,
+					$promptContext,
+					$this->normalizeCustomInstructions($customInstructions),
+					$this->getAvailableSourceLanguages() + $this->getAvailableTargetLanguages()
+				),
 			],
 			[
 				'role' => 'user',
@@ -578,7 +549,7 @@ class VTransOpenAIProvider implements VTransProviderInterface
 		return [
 			'api_key' => ['type' => 'text', 'label' => 'API Key', 'required' => true, 'column' => true],
 			'api_url' => ['type' => 'text', 'label' => 'API URL', 'required' => false, 'column' => true, 'default' => 'https://api.openai.com/v1/chat/completions'],
-			'system_prompt' => ['type' => 'textarea', 'label' => 'System Prompt', 'required' => false, 'column' => true],
+			'system_prompt' => ['type' => 'textarea', 'label' => 'System Prompt', 'required' => false, 'column' => true, 'default' => VTransPrompt::DEFAULT_TEMPLATE, 'note' => rex_i18n::rawMsg('vtrans_connections_system_prompt_note')],
 			'timeout' => ['type' => 'number', 'label' => 'Timeout (s)', 'required' => false, 'column' => true, 'default' => 90],
 			'model' => ['type' => 'text', 'label' => 'Model', 'required' => false, 'default' => 'gpt-4o-mini', 'note' => 'z. B. gpt-4o-mini, gpt-4o, claude-3-haiku, etc.'],
 			'temperature' => ['type' => 'text', 'label' => 'Temperature', 'required' => false, 'default' => '0.2', 'note' => '0.0 – 2.0'],
