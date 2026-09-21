@@ -4,6 +4,7 @@
 
 use FriendsOfRedaxo\VTrans\VTrans;
 use FriendsOfRedaxo\VTrans\VTransConnection;
+use FriendsOfRedaxo\VTrans\VTransPrompt;
 
 $func = rex_request('func', 'string', '');
 $id = rex_request('id', 'int', 0);
@@ -197,6 +198,11 @@ if ($isFormSubmit) {
         $connection->save();
 
         $messages[] = rex_view::success($this->i18n('vtrans_connections_saved'));
+        // A filled system prompt replaces the default template, which names the target
+        // language; without a placeholder the model has to guess what to produce.
+        if (isset($configFields['system_prompt']) && '' !== trim($postSystemPrompt) && !VTransPrompt::mentionsTargetLanguage($postSystemPrompt)) {
+            $messages[] = rex_view::warning($this->i18n('vtrans_connections_system_prompt_no_target'));
+        }
         if ($saveAndStay && $connection->getId() > 0) {
             $func = 'edit';
             $id = $connection->getId();
@@ -288,6 +294,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $formElements[] = $n;
 
         // Provider-driven fields: all fields from getConfigFields(), in order.
+        $configFields = [];
         if ('' !== $currentProvider && isset($availableProviders[$currentProvider])) {
             $providerInstance = $availableProviders[$currentProvider];
             $configFields = $providerInstance->getConfigFields();
@@ -326,7 +333,18 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                     : '';
 
                 if ('textarea' === $fieldDef['type']) {
-                    $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="3">' . rex_escape($fieldValue) . '</textarea>';
+                    $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="' . ('system_prompt' === $fieldName ? 6 : 3) . '"' . $defaultAttr . '>' . rex_escape($fieldValue) . '</textarea>';
+                } elseif ('select' === $fieldDef['type']) {
+                    $options = isset($fieldDef['options']) && is_array($fieldDef['options']) ? $fieldDef['options'] : [];
+                    $optionsHtml = '';
+                    if (empty($fieldDef['required'])) {
+                        $optionsHtml .= '<option value="">–</option>';
+                    }
+                    foreach ($options as $optValue => $optLabel) {
+                        $optValue = (string) $optValue;
+                        $optionsHtml .= '<option value="' . rex_escape($optValue) . '"' . ($optValue === (string) $fieldValue ? ' selected' : '') . '>' . rex_escape((string) $optLabel) . '</option>';
+                    }
+                    $n['field'] = '<select class="form-control selectpicker" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '">' . $optionsHtml . '</select>';
                 } elseif ('api_key' === $fieldName && '' !== $fieldValue && !$isFormPost) {
                     // API Key field - REDAXO automatically adds a view button for password inputs
                     $n['field'] = '<input type="password" class="form-control" id="vtrans-connection-api-key" name="api_key" value="' . rex_escape($fieldValue) . '"' . $defaultAttr . ' />';
@@ -354,12 +372,20 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $n['field'] = '<input type="hidden" name="debug" value="0"><label class="control-label font-normal"><input type="checkbox" name="debug" value="1"' . ($currentDebug ? ' checked' : '') . '> ' . $this->i18n('vtrans_debug_activate') . '</label>';
         $formElements[] = $n;
 
-        // Timeout.
-        $n = [];
-        $n['label'] = '<label for="vtrans-connection-timeout">' . $this->i18n('vtrans_connections_timeout') . '</label>';
-        $n['field'] = '<input type="number" min="1" class="form-control" id="vtrans-connection-timeout" name="timeout" value="' . rex_escape((string) $currentTimeout) . '" placeholder="' . (int) VTrans::GLOBAL_TIMEOUT . '" style="max-width:180px" />';
-        $n['note'] = '<p class="help-block">' . str_replace('{global}', (string) (int) VTrans::GLOBAL_TIMEOUT, $this->i18n('vtrans_connections_timeout_note')) . '</p>';
-        $formElements[] = $n;
+        // Timeout. A provider that makes no HTTP call of its own declares the field as
+        // hidden; the stored value is kept via a hidden input so saving does not reset it.
+        if (!empty($configFields['timeout']['hidden'])) {
+            $n = [];
+            $n['label'] = '';
+            $n['field'] = '<input type="hidden" name="timeout" value="' . rex_escape((string) $currentTimeout) . '" />';
+            $formElements[] = $n;
+        } else {
+            $n = [];
+            $n['label'] = '<label for="vtrans-connection-timeout">' . $this->i18n('vtrans_connections_timeout') . '</label>';
+            $n['field'] = '<input type="number" min="1" class="form-control" id="vtrans-connection-timeout" name="timeout" value="' . rex_escape((string) $currentTimeout) . '" placeholder="' . (int) VTrans::GLOBAL_TIMEOUT . '" style="max-width:180px" />';
+            $n['note'] = '<p class="help-block">' . str_replace('{global}', (string) (int) VTrans::GLOBAL_TIMEOUT, $this->i18n('vtrans_connections_timeout_note')) . '</p>';
+            $formElements[] = $n;
+        }
 
         // Max chars.
         $n = [];
@@ -422,29 +448,68 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $formAction = rex_url::currentBackendPage(['func' => $func] + ($id > 0 ? ['id' => $id] : []));
         echo '<form action="' . $formAction . '" method="post">' . $csrfToken->getHiddenField() . $content . '</form>';
 
-        // The "additionally allow" field only matters when HTML sanitisation is on,
-        // so hide it while the sanitise checkbox is unchecked (value is preserved).
+        // When a profile is picked (ai_platform), prefill Key and Bezeichnung from the
+        // profile name as long as the fields are still empty (never overwrite manual input).
+        // The script sits after the form, so the elements exist when it runs — binding
+        // directly instead of on rex:ready avoids stacking handlers on every PJAX load.
+        if (isset($configFields['profile_id'])) {
+            echo <<<'HTML'
+<script>
+(function () {
+    var sel = document.getElementById('vtrans-connection-profile_id');
+    var keyInput = document.getElementById('vtrans-connection-key');
+    var labelInput = document.getElementById('vtrans-connection-label');
+    if (!sel || !keyInput || !labelInput) {
+        return;
+    }
+    function slug(text) {
+        return text.toString().toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+    function apply() {
+        var opt = sel.options[sel.selectedIndex];
+        if (!opt || '' === opt.value) {
+            return;
+        }
+        var name = opt.text.replace(/\s*\(.*\)\s*$/, '').trim();
+        if ('' === labelInput.value.trim()) {
+            labelInput.value = name;
+        }
+        if ('' === keyInput.value.trim()) {
+            var key = slug(name);
+            keyInput.value = '' !== key ? key : ('ki-platform-' + opt.value);
+        }
+    }
+    // bootstrap-select fires its change through jQuery, which a native listener misses.
+    if (window.jQuery) {
+        window.jQuery(sel).on('change', apply);
+    } else {
+        sel.addEventListener('change', apply);
+    }
+    apply();
+})();
+</script>
+HTML;
+        }
+
+        // The "additionally allow" field only matters when HTML sanitisation is on, so
+        // hide it while the checkbox is unchecked; the value stays in the form and is
+        // saved unchanged. Bound directly for the same reason as the script above.
         echo <<<'HTML'
 <script>
 (function () {
-    function initSanitizeToggle() {
-        var cb = document.getElementById('vtrans-connection-sanitize-html');
-        var extra = document.getElementById('vtrans-connection-sanitize-allow-extra');
-        if (!cb || !extra) {
-            return;
-        }
-        var group = extra.closest('.form-group') || extra.parentNode;
-        function toggle() {
-            group.style.display = cb.checked ? '' : 'none';
-        }
-        cb.addEventListener('change', toggle);
-        toggle();
+    var cb = document.getElementById('vtrans-connection-sanitize-html');
+    var extra = document.getElementById('vtrans-connection-sanitize-allow-extra');
+    if (!cb || !extra) {
+        return;
     }
-    if (window.jQuery) {
-        window.jQuery(document).on('rex:ready', initSanitizeToggle);
-    } else {
-        document.addEventListener('DOMContentLoaded', initSanitizeToggle);
+    var group = extra.closest('.form-group') || extra.parentNode;
+    function toggle() {
+        group.style.display = cb.checked ? '' : 'none';
     }
+    cb.addEventListener('change', toggle);
+    toggle();
 })();
 </script>
 HTML;
