@@ -283,7 +283,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         // Key.
         $n = [];
         $n['label'] = '<label for="vtrans-connection-key">' . $this->i18n('vtrans_connections_key') . ' *</label>';
-        $n['field'] = '<input type="text" class="form-control" id="vtrans-connection-key" name="connection_key" value="' . rex_escape($currentKey) . '" pattern="[a-z0-9_-]+" />';
+        $n['field'] = '<input type="text" class="form-control" id="vtrans-connection-key" name="connection_key" value="' . rex_escape($currentKey) . '" pattern="[a-z0-9_\-]+" />';
         $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_key_note') . '</p>';
         $formElements[] = $n;
 
