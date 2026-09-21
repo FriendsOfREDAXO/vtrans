@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The `1.0.0-beta` line is the release candidate for the first production release `1.0.0`.
 Breaking changes may still occur until `1.0.0` is tagged.
 
+## [Unreleased]
+
+### Changed
+- The connection form hides "Zusätzlich erlauben" (`sanitize_allow_extra`) while HTML sanitisation is off, since it has no effect then; the stored value is kept. Contributed by [@TobiasKrais](https://github.com/TobiasKrais) ([#14](https://github.com/FriendsOfREDAXO/vtrans/pull/14)).
+
 ## [1.0.0-beta4] - 2026-09-21
 
 vTrans can now translate through the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon. The provider was contributed by [@TobiasKrais](https://github.com/TobiasKrais) — many thanks! ([#13](https://github.com/FriendsOfREDAXO/vtrans/pull/13), closes [#12](https://github.com/FriendsOfREDAXO/vtrans/issues/12)). Building on it, `openai` and `ai_platform` now share one way of building the system prompt, with placeholders for the languages.

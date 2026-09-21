@@ -403,7 +403,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         // Sanitisation of what is written to the cache for this connection.
         $n = [];
         $n['label'] = '<label>' . $this->i18n('vtrans_connections_sanitize') . '</label>';
-        $n['field'] = '<input type="hidden" name="sanitize_html" value="0"><label class="control-label font-normal"><input type="checkbox" name="sanitize_html" value="1"' . ($currentSanitizeHtml ? ' checked' : '') . '> ' . $this->i18n('vtrans_connections_sanitize_activate') . '</label>';
+        $n['field'] = '<input type="hidden" name="sanitize_html" value="0"><label class="control-label font-normal"><input type="checkbox" id="vtrans-connection-sanitize-html" name="sanitize_html" value="1"' . ($currentSanitizeHtml ? ' checked' : '') . '> ' . $this->i18n('vtrans_connections_sanitize_activate') . '</label>';
         $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_sanitize_note') . '</p>';
         $formElements[] = $n;
 
@@ -492,6 +492,27 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
 </script>
 HTML;
         }
+
+        // The "additionally allow" field only matters when HTML sanitisation is on, so
+        // hide it while the checkbox is unchecked; the value stays in the form and is
+        // saved unchanged. Bound directly for the same reason as the script above.
+        echo <<<'HTML'
+<script>
+(function () {
+    var cb = document.getElementById('vtrans-connection-sanitize-html');
+    var extra = document.getElementById('vtrans-connection-sanitize-allow-extra');
+    if (!cb || !extra) {
+        return;
+    }
+    var group = extra.closest('.form-group') || extra.parentNode;
+    function toggle() {
+        group.style.display = cb.checked ? '' : 'none';
+    }
+    cb.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
+HTML;
     }
 } else {
     // --- Connection list ---
