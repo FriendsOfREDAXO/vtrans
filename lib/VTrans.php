@@ -1247,7 +1247,7 @@ class VTrans
 
 	private static function apiSupportsPromptOptions(string $api): bool
 	{
-		return in_array($api, ['deepl-v2', 'deepl-api-free-v2', 'deepl-api-pro-v2', 'openai'], true);
+		return in_array($api, ['deepl-v2', 'deepl-api-free-v2', 'deepl-api-pro-v2', 'openai', 'ai_platform'], true);
 	}
 
 	/** @param array<string, mixed> $config */

@@ -18,7 +18,6 @@ for example summarizing, rephrasing, or editing content.
 Install it via the REDAXO installer or copy it manually to `redaxo/src/addons/vtrans` and activate it in the backend.
 
 **Requirements:**
-
 - REDAXO >= 5.17.0
 - PHP >= 8.2
 
@@ -33,8 +32,8 @@ Install it via the REDAXO installer or copy it manually to `redaxo/src/addons/vt
 5. Open `vTrans -> Playground` and test it.
 6. Check out the template example and try it out. That's the quickest way to understand the concept.
 
-Example for a DeepL Free connection:
 
+Example for a DeepL Free connection:
 - Key: `deepl_free`
 - Label: `DeepL Free`
 - Provider: `deepl-api-free-v2`
@@ -42,7 +41,6 @@ Example for a DeepL Free connection:
 - API Key: `YOUR_DEEPL_KEY`
 
 Notes:
-
 - Free keys belong to the free API URL `https://api-free.deepl.com/v2/translate`.
 - The default connection is used automatically when no `connection` value is passed in the request.
 
@@ -63,7 +61,6 @@ Notes:
 ## Supported Providers / APIs
 
 ### DeepL
-
 - Market leader with very good quality for common languages
 - `deepl-api-free-v2`
 - `deepl-api-pro-v2`
@@ -72,26 +69,22 @@ Notes:
 > Note: Unfortunately, DeepL's free plan (500k characters/month) no longer exists. For testing, or later as a low-cost alternative, I've set up a DeepL-compatible server. Get in touch if you're interested!
 
 ### Amazon Translate
-
 - Good to very good translation quality
 - `amazon-translate-v1`
 - API-key-/credential-based depending on the provider implementation
 
 ### Google Translate Basic v2
-
 - Good to very good translation quality
 - `google-translate-basic-v2`
 - API-key-based
 - No prompt options
 
 ### Google Translate v3
-
 - Very good translation quality
 - Service-account / OAuth-based
 - No prompt options
 
 ### LibreTranslate
-
 - Good quality - sufficient for most use cases
 - Open source - can also be self-hosted
 - `libretranslate-v1`
@@ -99,7 +92,6 @@ Notes:
 - No prompt options
 
 ### MyMemory
-
 - Simple, rather technical translation
 - `mymemory-v2`
 - Endpoint-based (default: `https://api.mymemory.translated.net/get`)
@@ -107,14 +99,12 @@ Notes:
 - No prompt options
 
 ### OpenAI-compatible LLMs
-
 - Flexible depending on the model
 - `openai`
 - Freely configurable endpoints and parameters
 - Supports `context` and `customInstructions`
 
 ### AI Platform (ai_platform addon)
-
 - `ai_platform`
 - Delegates to a **text profile** of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon instead of calling an LLM endpoint directly
 - Provider, model, API key, temperature and token limits are all managed in the ai_platform profile — the vTrans connection only selects the profile
@@ -122,7 +112,6 @@ Notes:
 - Requires the `ai_platform` addon; without it the provider is inert (empty profile select, clear error on use)
 
 ### Fake Local
-
 - Useful during development
 - Generates simple test output to verify the functionality
 - Local only - no API - no costs
@@ -130,7 +119,6 @@ Notes:
 ---
 
 ## Costs
-
 The costs of the different providers vary widely and usually consist of a monthly base fee (subscription) and costs per 1 million characters. There are also often free or included quotas. This is something everyone needs to compare for themselves. LibreTranslate can also be self-hosted on suitable hardware. For a large website, you should expect around 20–50 EUR per language (of course only a rough estimate).
 
 ## Configuration
@@ -147,7 +135,6 @@ Configuration is done via the backend page `Connections`. There, connections are
 - Various provider-specific parameters
 
 Notes:
-
 - The default connection is used automatically when no individual `Connection` is defined in the request.
 - The default connection and availability in the Playground can be switched quickly in the Connections overview.
 
@@ -158,7 +145,6 @@ Notes:
 Requests can be tested manually here.
 
 ### Inputs
-
 - Connection
 - Source and target language
 - Format (`text` or `html`)
@@ -418,8 +404,8 @@ connection:
 
 ## Support
 
-- Project: [vTrans Github](https://github.com/FriendsOfREDAXO/vtrans)
-- Community: [Redaxo](https://www.redaxo.org)
+- Project: https://github.com/FriendsOfREDAXO/vtrans
+- Community: https://www.redaxo.org
 - Slack: [FOR Slack Channel](https://friendsofredaxo.slack.com/)
 
 ## Credits
