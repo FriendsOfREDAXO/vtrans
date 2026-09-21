@@ -171,4 +171,5 @@ vtrans_connections_ai_profile_required = Bitte ein KI-Platform-Text-Profil ausw�
 vtrans_connections_ai_profile_invalid = Kein aktives KI-Platform-Profil mit dieser ID gefunden.
 vtrans_connections_ai_profile_not_text = Das gewählte KI-Platform-Profil ist kein Text-Profil.
 vtrans_connections_ai_systemprompt = System-Prompt (optional)
-vtrans_connections_ai_systemprompt_note = Eigene Übersetzungs-Anweisungen (Ton, Terminologie). Werden in den vTrans-Cache-Hash aufgenommen — eine Änderung erneuert zwischengespeicherte Übersetzungen. Der System-Prompt des KI-Platform-Profils wird hier bewusst nicht verwendet.
+vtrans_connections_system_prompt_note = Leer lassen für den Standard-Prompt (grau angezeigt). Ein eigener Prompt ersetzt ihn komplett. Platzhalter: {source_lang}, {target_lang} (Codes wie DE, EN-GB), {source_lang_name}, {target_lang_name} (Namen wie German, English). Die Format-Regel (Text bzw. HTML samt Platzhaltern) hängt vTrans immer an, danach Zusatzkontext und Zusatzvorgaben des Aufrufs.
+vtrans_connections_system_prompt_no_target = Der System-Prompt ersetzt den Standard-Prompt, nennt aber keine Zielsprache. Wenn diese Verbindung übersetzt, ergänze {target_lang_name} oder {target_lang}, sonst weiß das Modell nicht, in welche Sprache es übersetzen soll. Für reines Umformulieren kannst du den Hinweis ignorieren.

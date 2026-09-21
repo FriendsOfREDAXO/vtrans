@@ -171,4 +171,5 @@ vtrans_connections_ai_profile_required = Please select an AI Platform text profi
 vtrans_connections_ai_profile_invalid = No active AI Platform profile found for this ID.
 vtrans_connections_ai_profile_not_text = The selected AI Platform profile is not a text profile.
 vtrans_connections_ai_systemprompt = System prompt (optional)
-vtrans_connections_ai_systemprompt_note = Custom translation instructions (tone, terminology). Included in the vTrans cache hash — changing them refreshes cached translations. The AI Platform profile's own system prompt is deliberately not used here.
+vtrans_connections_system_prompt_note = Leave empty for the default prompt (shown greyed out). A custom prompt replaces it entirely. Placeholders: {source_lang}, {target_lang} (codes such as DE, EN-GB), {source_lang_name}, {target_lang_name} (names such as German, English). vTrans always appends the format rule (text, or HTML including its placeholders), followed by the request's context and custom instructions.
+vtrans_connections_system_prompt_no_target = The system prompt replaces the default prompt but does not name a target language. If this connection translates, add {target_lang_name} or {target_lang}, otherwise the model does not know which language to translate into. For rewriting only, you can ignore this.

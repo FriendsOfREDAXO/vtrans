@@ -3,6 +3,7 @@
 namespace FriendsOfRedaxo\VTrans\Provider;
 
 use FriendsOfRedaxo\VTrans\VTransProviderInterface;
+use FriendsOfRedaxo\VTrans\VTransPrompt;
 use FriendsOfRedaxo\VTrans\VTransProviderResult;
 use rex_addon;
 use rex_exception;
@@ -52,18 +53,18 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 			throw new rex_exception('ai_platform profile ' . $config['profileId'] . ' is not a text profile.');
 		}
 
-		// The translation directive (source→target, format) is fixed and deterministic.
-		// Any custom instructions come from the vTrans connection's system-prompt field,
-		// passed here as promptContext — vTrans folds that into its cache hash, so a prompt
-		// change invalidates cached translations. The ai_platform profile's own system
-		// prompt is intentionally NOT mixed in: vTrans cannot see it and would keep serving
-		// stale cached translations when it changes.
-		$systemPrompt = $this->buildSystemPrompt(
+		// The prompt comes from the vTrans connection, built the same way as for the
+		// openai provider. The ai_platform profile's own system prompt is intentionally
+		// not used: vTrans cannot see it, so a change there would not refresh the cache,
+		// whereas the connection prompt is part of the cache hash.
+		$systemPrompt = VTransPrompt::build(
+			$config['systemPrompt'],
 			$srcLang,
 			$targetLang,
 			$format,
 			$this->normalizeString($requestOptions['promptContext'] ?? null),
-			$this->normalizeInstructions($requestOptions['customInstructions'] ?? [])
+			$this->normalizeInstructions($requestOptions['customInstructions'] ?? []),
+			$this->getAvailableSourceLanguages() + $this->getAvailableTargetLanguages()
 		);
 
 		$this->lastDebugData = [
@@ -219,7 +220,7 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	{
 		return [
 			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'note' => $this->profileHint()],
-			'system_prompt' => ['type' => 'textarea', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt'), 'required' => false, 'column' => true, 'note' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt_note')],
+			'system_prompt' => ['type' => 'textarea', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt'), 'required' => false, 'column' => true, 'default' => VTransPrompt::DEFAULT_TEMPLATE, 'note' => rex_i18n::rawMsg('vtrans_connections_system_prompt_note')],
 			// The HTTP call is made by ai_platform, which does not take a timeout from here.
 			'timeout' => ['type' => 'number', 'label' => 'Timeout (s)', 'column' => true, 'hidden' => true],
 		];
@@ -257,7 +258,7 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 
 	/**
 	 * @param array<string, mixed> $modelConfig
-	 * @return array{profileId: int}
+	 * @return array{profileId: int, systemPrompt: string}
 	 */
 	private function normalizeConfig(array $modelConfig): array
 	{
@@ -268,6 +269,7 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 
 		return [
 			'profileId' => $profileId,
+			'systemPrompt' => $this->normalizeString($modelConfig['systemPrompt'] ?? null),
 		];
 	}
 
@@ -284,41 +286,6 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 		}
 
 		return $normalized;
-	}
-
-	/**
-	 * Build the per-call system prompt: the fixed translation directive plus the vTrans
-	 * connection's system prompt (passed as promptContext). The ai_platform profile's own
-	 * system prompt is deliberately excluded — vTrans folds the connection prompt into its
-	 * cache hash, so keeping the effective prompt on the vTrans side is what lets a prompt
-	 * change invalidate cached translations.
-	 */
-	/** @param list<string> $customInstructions */
-	private function buildSystemPrompt(?string $srcLang, string $targetLang, string $format, string $promptContext, array $customInstructions): string
-	{
-		$source = null !== $srcLang && '' !== trim($srcLang) ? trim($srcLang) : 'auto-detect';
-		$formatInstruction = match ($format) {
-			'html' => 'Input is HTML. Preserve HTML tags, attributes and structure. Translate only user-visible text.',
-			default => 'Input is plain text. Return plain text only.',
-		};
-
-		$systemParts = [
-			'You are a professional translation engine.',
-			'Translate from ' . $source . ' to ' . $targetLang . '.',
-			$formatInstruction,
-			'Return only the translated text, without explanations, quotes, markdown fences, or extra comments.',
-		];
-
-		$promptContext = trim($promptContext);
-		if ('' !== $promptContext) {
-			$systemParts[] = "Additional instructions:\n" . $promptContext;
-		}
-
-		if ([] !== $customInstructions) {
-			$systemParts[] = "Custom instructions:\n- " . implode("\n- ", $customInstructions);
-		}
-
-		return implode("\n\n", $systemParts);
 	}
 
 	/**

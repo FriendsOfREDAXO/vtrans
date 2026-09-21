@@ -13,8 +13,17 @@ Breaking changes may still occur until `1.0.0` is tagged.
 ### Added
 - New translation provider `ai_platform` (`VTransAiPlatformProvider`). Instead of calling an LLM endpoint itself, the connection points at a text profile of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon; provider, model, API key, temperature and token limits all live in that profile. Requires the `ai_platform` addon — without it the provider stays inert (empty profile select, clear error on use), so vTrans keeps no hard dependency on it.
 - Translation instructions for `ai_platform` go into the connection's system prompt, which vTrans includes in its cache hash, so changing them refreshes cached translations. The profile's own `system_prompt` is deliberately not applied, because vTrans cannot see it and would keep serving stale cache when it changes. `context` and `customInstructions` are supported.
+- Placeholders in the system prompt of `openai` and `ai_platform` connections: `{source_lang}`, `{target_lang}` (codes) and `{source_lang_name}`, `{target_lang_name}` (names from the provider's language list). The connection form shows the default prompt as placeholder text, lists the placeholders, and warns on save when a custom prompt names no target language.
 - The connection form gained a `select` field type, used by the profile picker. Picking a profile prefills key and label from the profile name while those fields are still empty.
 - A provider can mark its `timeout` config field as `hidden`; the connection form then drops the timeout input and keeps the stored value. `ai_platform` uses this, since the HTTP call is made by the ai_platform addon.
+
+### Changed
+- `openai` and `ai_platform` build their system prompt through the shared `VTransPrompt`, so a connection's system prompt behaves the same for both: it replaces the default prompt entirely.
+- The format rule is now appended even when a custom system prompt is set. Before, a custom `openai` prompt dropped it, so an HTML request could lose the `<vtrans-ph>` placeholders of excluded regions. The HTML rule now names those placeholders explicitly.
+- The default prompt names languages ("German", "English – British") instead of codes. Cached translations are not affected.
+
+### Fixed
+- `openai` sent a literal `\n` instead of a line break before the `Context:` and `Additional instructions:` blocks.
 
 ## [1.0.0-beta3] - 2026-09-07
 

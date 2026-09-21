@@ -101,14 +101,13 @@ Hinweise:
 - Je nach Modell - flexibel einsetzbar.
 - `openai`
 - Frei konfigurierbare Endpunkte und Parameter
-- Unterstützt `context` und `customInstructions`
+- Unterstützt `context` und `customInstructions`; System-Prompt mit Platzhaltern, siehe [System-Prompt](#system-prompt-openai-ai_platform)
 
 ### KI Platform (Addon ai_platform)
 - `ai_platform`
 - Nutzt ein **Text-Profil** des Addons [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform), statt einen LLM-Endpunkt direkt aufzurufen
 - Provider, Modell, API-Key, Temperature und Token-Grenzen werden komplett im ai_platform-Profil verwaltet — die vTrans-Verbindung wählt nur das Profil aus
-- vTrans baut den Prompt selbst: Eine feste Übersetzungsdirektive (Quell→Zielsprache, HTML oder Text, „nur die Übersetzung zurückgeben“) wird immer mitgeschickt, deshalb funktioniert die Verbindung auch mit leerem Feld **System-Prompt**
-- Das Feld **System-Prompt** der Verbindung wird an diese Direktive als zusätzliche Anweisung *angehängt* (Ton, Terminologie), danach folgen `context` und `customInstructions`. Anders als beim Provider `openai`, wo ein System-Prompt den eingebauten *ersetzt*, kann die Direktive hier nicht verloren gehen
+- Der Prompt kommt aus der vTrans-Verbindung und funktioniert genau wie bei `openai`, siehe [System-Prompt](#system-prompt-openai-ai_platform). Unterstützt `context` und `customInstructions`
 - Der `system_prompt` des ai_platform-Profils wird bewusst **nicht** verwendet: vTrans sieht ihn nicht, eine Änderung würde den Cache also nicht erneuern. Der Verbindungs-Prompt ist Teil des Cache-Hashs
 - Die Verbindung hat keinen eigenen Timeout: Den HTTP-Aufruf macht ai_platform
 - Benötigt das Addon `ai_platform`; ohne es ist der Provider inaktiv (leere Profil-Auswahl, klare Fehlermeldung bei Nutzung)
@@ -139,6 +138,35 @@ Die Konfiguration erfolgt über die Backend-Seite `Connections`. Dort werden Ver
 Hinweise:
 - Die Standard-Connection wird automatisch verwendet, wenn bei der Abfrage keine individuelle `Connection` definiert ist.
 - Die Standard-Connection und auch die Verfügbarkeit im Playground kann in der Connections-Übersicht schnell umgeschaltet werden
+
+### System-Prompt (openai, ai_platform)
+
+Bleibt das Feld **System-Prompt** leer, schickt vTrans seinen Standard-Prompt, den das Formular grau anzeigt:
+
+```
+You are a professional translation engine.
+Translate from {source_lang_name} to {target_lang_name}.
+Return only the translated text, without explanations, quotes, markdown fences, or extra comments.
+```
+
+Ein eigener Prompt **ersetzt** ihn komplett. Diese Platzhalter werden pro Aufruf gefüllt:
+
+| Platzhalter | Beispiel |
+|---|---|
+| `{source_lang}` | `DE` (`auto` bei automatischer Erkennung) |
+| `{target_lang}` | `EN-GB` |
+| `{source_lang_name}` | `German` |
+| `{target_lang_name}` | `English – British` |
+
+Nenne die Zielsprache im Prompt, am besten als `{target_lang_name}` — Modelle kommen mit Namen zuverlässiger zurecht als mit Codes. Fehlen beide Zielsprachen-Platzhalter, warnt das Formular beim Speichern.
+
+Unabhängig vom Prompt hängt vTrans immer an:
+
+1. Die Format-Regel — Text, bzw. bei HTML: Markup und die `<vtrans-ph>`-Platzhalter erhalten, die vTrans zum Wiederherstellen ausgeschlossener Bereiche braucht.
+2. `context` des Aufrufs, als `Context:`.
+3. `customInstructions` des Aufrufs, als Liste.
+
+Der Prompt ist Teil des Cache-Hashs; eine Änderung erneuert zwischengespeicherte Übersetzungen.
 
 ---
 

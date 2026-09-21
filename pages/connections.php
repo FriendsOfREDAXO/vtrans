@@ -4,6 +4,7 @@
 
 use FriendsOfRedaxo\VTrans\VTrans;
 use FriendsOfRedaxo\VTrans\VTransConnection;
+use FriendsOfRedaxo\VTrans\VTransPrompt;
 
 $func = rex_request('func', 'string', '');
 $id = rex_request('id', 'int', 0);
@@ -197,6 +198,11 @@ if ($isFormSubmit) {
         $connection->save();
 
         $messages[] = rex_view::success($this->i18n('vtrans_connections_saved'));
+        // A filled system prompt replaces the default template, which names the target
+        // language; without a placeholder the model has to guess what to produce.
+        if (isset($configFields['system_prompt']) && '' !== trim($postSystemPrompt) && !VTransPrompt::mentionsTargetLanguage($postSystemPrompt)) {
+            $messages[] = rex_view::warning($this->i18n('vtrans_connections_system_prompt_no_target'));
+        }
         if ($saveAndStay && $connection->getId() > 0) {
             $func = 'edit';
             $id = $connection->getId();
@@ -327,7 +333,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                     : '';
 
                 if ('textarea' === $fieldDef['type']) {
-                    $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="3">' . rex_escape($fieldValue) . '</textarea>';
+                    $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="' . ('system_prompt' === $fieldName ? 6 : 3) . '"' . $defaultAttr . '>' . rex_escape($fieldValue) . '</textarea>';
                 } elseif ('select' === $fieldDef['type']) {
                     $options = isset($fieldDef['options']) && is_array($fieldDef['options']) ? $fieldDef['options'] : [];
                     $optionsHtml = '';
