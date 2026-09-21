@@ -4,7 +4,7 @@ vTrans bundles several text-processing APIs behind a single interface,
 stores the results in the database, and provides backend pages for testing,
 analysis, and maintenance.
 
-The primary use case is translation. With LLM-based providers (for example the OpenAI provider),
+The primary use case is translation. With LLM-based providers (the OpenAI provider or ai_platform),
 it can also be used for other scenarios where the source and target language are the same,
 for example summarizing, rephrasing, or editing content.
 
@@ -102,13 +102,13 @@ Notes:
 - Flexible depending on the model
 - `openai`
 - Freely configurable endpoints and parameters
-- Supports `context` and `customInstructions`; system prompt with placeholders, see [System prompt](#system-prompt-openai-ai_platform)
+- Supports `context` and `customInstructions`; system prompt with placeholders, see [System prompt](#system-prompt-llm-providers)
 
 ### AI Platform (ai_platform addon)
 - `ai_platform`
 - Delegates to a **text profile** of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon instead of calling an LLM endpoint directly
 - Provider, model, API key, temperature and token limits are all managed in the ai_platform profile — the vTrans connection only selects the profile
-- The prompt comes from the vTrans connection and works exactly as for `openai`, see [System prompt](#system-prompt-openai-ai_platform). Supports `context` and `customInstructions`
+- The prompt comes from the vTrans connection and works exactly as for `openai`, see [System prompt](#system-prompt-llm-providers). Supports `context` and `customInstructions`
 - The ai_platform profile's own `system_prompt` is deliberately **not** used: vTrans cannot see it, so changing it would not refresh cached translations. The connection prompt is part of the cache hash
 - The connection has no timeout of its own: the HTTP call is made by ai_platform
 - Requires the `ai_platform` addon; without it the provider is inert (empty profile select, clear error on use)
@@ -140,7 +140,7 @@ Notes:
 - The default connection is used automatically when no individual `Connection` is defined in the request.
 - The default connection and availability in the Playground can be switched quickly in the Connections overview.
 
-### System prompt (openai, ai_platform)
+### System prompt (LLM providers)
 
 Leave the **System-Prompt** field empty and vTrans sends its default prompt, which the form shows greyed out:
 
@@ -443,6 +443,7 @@ connection:
 
 - Friends Of REDAXO
 - [Matthias Weiss / VIEWSION.net](https://github.com/VIEWSION) (Lead)
+- [Tobias Krais](https://github.com/TobiasKrais) (ai_platform provider)
 
 ---
 

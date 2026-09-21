@@ -3,7 +3,7 @@
 vTrans bündelt mehrere Text-Verarbeitungs-APIs hinter einer einheitlichen Schnittstelle,
 speichert Ergebnisse in der Datenbank und bringt Backend-Seiten für Test, Analyse und Pflege mit.
 
-Der primäre Einsatzzweck ist Übersetzen. Mit LLM-basierten Providern (z. B. dem OpenAI-Provider)
+Der primäre Einsatzzweck ist Übersetzen. Mit LLM-basierten Providern (OpenAI-Provider oder ai_platform)
 lassen sich aber auch andere Anwendungsfälle umsetzen, bei denen Quell- und Zielsprache identisch sind –
 z. B. Zusammenfassen, Umformulieren oder inhaltliche Bearbeitung von Texten.
 
@@ -101,13 +101,13 @@ Hinweise:
 - Je nach Modell - flexibel einsetzbar.
 - `openai`
 - Frei konfigurierbare Endpunkte und Parameter
-- Unterstützt `context` und `customInstructions`; System-Prompt mit Platzhaltern, siehe [System-Prompt](#system-prompt-openai-ai_platform)
+- Unterstützt `context` und `customInstructions`; System-Prompt mit Platzhaltern, siehe [System-Prompt](#system-prompt-llm-provider)
 
 ### KI Platform (Addon ai_platform)
 - `ai_platform`
 - Nutzt ein **Text-Profil** des Addons [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform), statt einen LLM-Endpunkt direkt aufzurufen
 - Provider, Modell, API-Key, Temperature und Token-Grenzen werden komplett im ai_platform-Profil verwaltet — die vTrans-Verbindung wählt nur das Profil aus
-- Der Prompt kommt aus der vTrans-Verbindung und funktioniert genau wie bei `openai`, siehe [System-Prompt](#system-prompt-openai-ai_platform). Unterstützt `context` und `customInstructions`
+- Der Prompt kommt aus der vTrans-Verbindung und funktioniert genau wie bei `openai`, siehe [System-Prompt](#system-prompt-llm-provider). Unterstützt `context` und `customInstructions`
 - Der `system_prompt` des ai_platform-Profils wird bewusst **nicht** verwendet: vTrans sieht ihn nicht, eine Änderung würde den Cache also nicht erneuern. Der Verbindungs-Prompt ist Teil des Cache-Hashs
 - Die Verbindung hat keinen eigenen Timeout: Den HTTP-Aufruf macht ai_platform
 - Benötigt das Addon `ai_platform`; ohne es ist der Provider inaktiv (leere Profil-Auswahl, klare Fehlermeldung bei Nutzung)
@@ -139,7 +139,7 @@ Hinweise:
 - Die Standard-Connection wird automatisch verwendet, wenn bei der Abfrage keine individuelle `Connection` definiert ist.
 - Die Standard-Connection und auch die Verfügbarkeit im Playground kann in der Connections-Übersicht schnell umgeschaltet werden
 
-### System-Prompt (openai, ai_platform)
+### System-Prompt (LLM-Provider)
 
 Bleibt das Feld **System-Prompt** leer, schickt vTrans seinen Standard-Prompt, den das Formular grau anzeigt:
 
@@ -445,6 +445,7 @@ Verbindung geschrieben wird:
 
 - Friends Of REDAXO
 - [Matthias Weiss / VIEWSION.net](https://github.com/VIEWSION) (Lead)
+- [Tobias Krais](https://github.com/TobiasKrais) (ai_platform-Provider)
 
 ---
 

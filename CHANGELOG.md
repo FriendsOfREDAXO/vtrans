@@ -8,18 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The `1.0.0-beta` line is the release candidate for the first production release `1.0.0`.
 Breaking changes may still occur until `1.0.0` is tagged.
 
-## [Unreleased]
+## [1.0.0-beta4] - 2026-09-21
+
+vTrans can now translate through the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon. The provider was contributed by [@TobiasKrais](https://github.com/TobiasKrais) — many thanks! ([#13](https://github.com/FriendsOfREDAXO/vtrans/pull/13), closes [#12](https://github.com/FriendsOfREDAXO/vtrans/issues/12)). Building on it, `openai` and `ai_platform` now share one way of building the system prompt, with placeholders for the languages.
 
 ### Added
-- New translation provider `ai_platform` (`VTransAiPlatformProvider`). Instead of calling an LLM endpoint itself, the connection points at a text profile of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon; provider, model, API key, temperature and token limits all live in that profile. Requires the `ai_platform` addon — without it the provider stays inert (empty profile select, clear error on use), so vTrans keeps no hard dependency on it.
-- Translation instructions for `ai_platform` go into the connection's system prompt, which vTrans includes in its cache hash, so changing them refreshes cached translations. The profile's own `system_prompt` is deliberately not applied, because vTrans cannot see it and would keep serving stale cache when it changes. `context` and `customInstructions` are supported.
-- Placeholders in the system prompt of `openai` and `ai_platform` connections: `{source_lang}`, `{target_lang}` (codes) and `{source_lang_name}`, `{target_lang_name}` (names from the provider's language list). The connection form shows the default prompt as placeholder text, lists the placeholders, and warns on save when a custom prompt names no target language.
+- New translation provider `ai_platform`. Instead of calling an LLM endpoint itself, a connection points at a text profile of the ai_platform addon; provider, model, API key, temperature and token limits all live in that profile. Without the addon the provider stays inert (empty profile select, clear error on use), so vTrans keeps no hard dependency on it.
+- Placeholders in the system prompt of `openai` and `ai_platform` connections: `{source_lang}`, `{target_lang}` (codes such as `DE`, `EN-GB`) and `{source_lang_name}`, `{target_lang_name}` (names from the provider's language list). The connection form shows the default prompt as placeholder text, explains the placeholders, and warns on save when a custom prompt names no target language.
 - The connection form gained a `select` field type, used by the profile picker. Picking a profile prefills key and label from the profile name while those fields are still empty.
-- A provider can mark its `timeout` config field as `hidden`; the connection form then drops the timeout input and keeps the stored value. `ai_platform` uses this, since the HTTP call is made by the ai_platform addon.
+- A provider can mark its `timeout` config field as `hidden`; the form then drops the timeout input and keeps the stored value. `ai_platform` uses this, since the HTTP call is made by the ai_platform addon.
 
 ### Changed
-- `openai` and `ai_platform` build their system prompt through the shared `VTransPrompt`, so a connection's system prompt behaves the same for both: it replaces the default prompt entirely.
-- The format rule is now appended even when a custom system prompt is set. Before, a custom `openai` prompt dropped it, so an HTML request could lose the `<vtrans-ph>` placeholders of excluded regions. The HTML rule now names those placeholders explicitly.
+- `openai` and `ai_platform` build their system prompt through the shared `VTransPrompt`, so a connection's system prompt behaves the same for both: it replaces the default prompt entirely. For `ai_platform`, the prompt comes from the vTrans connection, not from the ai_platform profile — vTrans cannot see the profile's prompt, so a change there would not refresh cached translations, whereas the connection prompt is part of the cache hash.
+- The format rule is appended even when a custom system prompt is set. Before, a custom `openai` prompt dropped it, so an HTML request could lose the `<vtrans-ph>` placeholders of excluded regions. The HTML rule now names those placeholders explicitly.
 - The default prompt names languages ("German", "English – British") instead of codes. Cached translations are not affected.
 
 ### Fixed
