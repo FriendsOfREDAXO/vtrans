@@ -21,6 +21,9 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	/** @var array<string, mixed> */
 	private array $lastDebugData = [];
 
+	/** @var list<array<string, mixed>>|null */
+	private ?array $textProfiles = null;
+
 	public function supports(string $api): bool
 	{
 		return 'ai_platform' === $api;
@@ -59,7 +62,8 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 			$srcLang,
 			$targetLang,
 			$format,
-			$this->normalizeString($requestOptions['promptContext'] ?? null)
+			$this->normalizeString($requestOptions['promptContext'] ?? null),
+			$this->normalizeInstructions($requestOptions['customInstructions'] ?? [])
 		);
 
 		$this->lastDebugData = [
@@ -214,8 +218,10 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	public function getConfigFields(): array
 	{
 		return [
-			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'option_data' => $this->profileOptionData(), 'note' => $this->profileHint()],
+			'profile_id' => ['type' => 'select', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_profile'), 'required' => true, 'options' => $this->profileOptions(), 'note' => $this->profileHint()],
 			'system_prompt' => ['type' => 'textarea', 'label' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt'), 'required' => false, 'column' => true, 'note' => rex_i18n::rawMsg('vtrans_connections_ai_systemprompt_note')],
+			// The HTTP call is made by ai_platform, which does not take a timeout from here.
+			'timeout' => ['type' => 'number', 'label' => 'Timeout (s)', 'column' => true, 'hidden' => true],
 		];
 	}
 
@@ -287,7 +293,8 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	 * cache hash, so keeping the effective prompt on the vTrans side is what lets a prompt
 	 * change invalidate cached translations.
 	 */
-	private function buildSystemPrompt(?string $srcLang, string $targetLang, string $format, string $promptContext): string
+	/** @param list<string> $customInstructions */
+	private function buildSystemPrompt(?string $srcLang, string $targetLang, string $format, string $promptContext, array $customInstructions): string
 	{
 		$source = null !== $srcLang && '' !== trim($srcLang) ? trim($srcLang) : 'auto-detect';
 		$formatInstruction = match ($format) {
@@ -307,6 +314,10 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 			$systemParts[] = "Additional instructions:\n" . $promptContext;
 		}
 
+		if ([] !== $customInstructions) {
+			$systemParts[] = "Custom instructions:\n- " . implode("\n- ", $customInstructions);
+		}
+
 		return implode("\n\n", $systemParts);
 	}
 
@@ -317,12 +328,8 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 	 */
 	private function profileOptions(): array
 	{
-		if (!$this->isAiPlatformAvailable()) {
-			return [];
-		}
-
 		$options = [];
-		foreach (\FriendsOfRedaxo\AiPlatform\Service::getInstance()->getProfiles('text') as $profile) {
+		foreach ($this->getTextProfiles() as $profile) {
 			$id = $this->normalizeInt($profile['id'] ?? null, 0);
 			if ($id <= 0) {
 				continue;
@@ -335,31 +342,22 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 		return $options;
 	}
 
+
 	/**
-	 * Per-option data attributes for the profile select: the profile's max_tokens,
-	 * used by the form to derive vTrans' "max characters" guideline.
+	 * Active text profiles, loaded once per request: getConfigFields() needs them for
+	 * the options and the hint, and the form calls it on render and on save.
 	 *
-	 * @return array<int|string, array<string, string>>
+	 * @return list<array<string, mixed>>
 	 */
-	private function profileOptionData(): array
+	private function getTextProfiles(): array
 	{
-		if (!$this->isAiPlatformAvailable()) {
-			return [];
+		if (null === $this->textProfiles) {
+			$this->textProfiles = $this->isAiPlatformAvailable()
+				? \FriendsOfRedaxo\AiPlatform\Service::getInstance()->getProfiles('text')
+				: [];
 		}
 
-		$data = [];
-		foreach (\FriendsOfRedaxo\AiPlatform\Service::getInstance()->getProfiles('text') as $profile) {
-			$id = $this->normalizeInt($profile['id'] ?? null, 0);
-			if ($id <= 0) {
-				continue;
-			}
-			$maxTokens = $this->normalizeInt($profile['max_tokens'] ?? null, 0);
-			if ($maxTokens > 0) {
-				$data[(string) $id] = ['data-max-tokens' => (string) $maxTokens];
-			}
-		}
-
-		return $data;
+		return $this->textProfiles;
 	}
 
 	private function profileHint(): string
@@ -373,6 +371,24 @@ class VTransAiPlatformProvider implements VTransProviderInterface
 		}
 
 		return rex_i18n::rawMsg('vtrans_connections_ai_profile_note');
+	}
+
+	/** @return list<string> */
+	private function normalizeInstructions(mixed $instructions): array
+	{
+		if (!is_array($instructions)) {
+			return [];
+		}
+
+		$normalized = [];
+		foreach ($instructions as $instruction) {
+			$instruction = trim($this->normalizeString($instruction));
+			if ('' !== $instruction) {
+				$normalized[] = $instruction;
+			}
+		}
+
+		return $normalized;
 	}
 
 	private function normalizeString(mixed $value): string

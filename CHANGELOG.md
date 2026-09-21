@@ -11,41 +11,30 @@ Breaking changes may still occur until `1.0.0` is tagged.
 ## [Unreleased]
 
 ### Added
-
-- New translation provider `ai_platform` (`VTransAiPlatformProvider`). Instead of calling an LLM endpoint itself, the connection points at an ai_platform **text profile**; provider, model, API key, temperature and token limits all live in that profile. The connection only carries the profile choice. Requires the `ai_platform` addon — the provider degrades gracefully (empty select, clear error) when it is absent, so vTrans keeps no hard dependency on it.
-- The connection form gained a `select` field type (value/label options with a selected marker), used by the profile picker.
-
-### Changed
-
-- Connection form is provider-aware for `ai_platform`: the profile is chosen from a dropdown of active text profiles; picking one prefills **Key** and **Bezeichnung** from the profile name (only while those fields are still empty, never overwriting manual input). The **Timeout** field is hidden for this provider because it makes no HTTP call of its own — the ai_platform addon does — and the stored value is preserved via a hidden input.
-- Translation instructions for the `ai_platform` provider live in the connection's **System prompt** field, which vTrans includes in its cache hash — so changing them refreshes cached translations, exactly as with the built-in LLM provider. The ai_platform profile's own `system_prompt` is deliberately **not** applied, because vTrans cannot see it and would otherwise keep serving stale cache when it changes. vTrans always adds the per-call translation directive (source→target, HTML/plain) on top.
-- "Zusätzlich erlauben" (`sanitize_allow_extra`) is only shown while "HTML-Bereinigung" is active, since it has no effect otherwise. The field stays in the DOM (its value still submits), it is only visually hidden.
-- For the `ai_platform` provider, the connection's "Max. Zeichen" guideline is derived from the selected profile's `max_tokens` (~4 characters per output token) and filled automatically when a profile is picked (on load only when the field is still empty). The field itself is hidden for this provider since the value comes from the profile; it is still submitted via a hidden input.
+- New translation provider `ai_platform` (`VTransAiPlatformProvider`). Instead of calling an LLM endpoint itself, the connection points at a text profile of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon; provider, model, API key, temperature and token limits all live in that profile. Requires the `ai_platform` addon — without it the provider stays inert (empty profile select, clear error on use), so vTrans keeps no hard dependency on it.
+- Translation instructions for `ai_platform` go into the connection's system prompt, which vTrans includes in its cache hash, so changing them refreshes cached translations. The profile's own `system_prompt` is deliberately not applied, because vTrans cannot see it and would keep serving stale cache when it changes. `context` and `customInstructions` are supported.
+- The connection form gained a `select` field type, used by the profile picker. Picking a profile prefills key and label from the profile name while those fields are still empty.
+- A provider can mark its `timeout` config field as `hidden`; the connection form then drops the timeout input and keeps the stored value. `ai_platform` uses this, since the HTTP call is made by the ai_platform addon.
 
 ## [1.0.0-beta3] - 2026-09-07
 
 ### Fixed
-
 - Regions marked as "do not translate" keep their event handlers again. `VTransHtmlFilter` masked `translate="no"` and `.notranslate` elements by replacing only their *inner* content, so the opening tag stayed in the stream that is handed to the sanitiser — a `<button class="notranslate" onclick="…">` came back without its `onclick`. The whole element is masked now, opening tag included, exactly as `data-vtrans-exclude` and `<script>`/`<style>` already were. Nothing an author marked as excluded passes through the sanitiser any more; everything else still does.
 
 ### Added
-
 - Sanitisation is configurable per connection. `sanitize_html` (default `1`) switches it off for everything written for that connection — the provider's answer and manual edits on the data page alike; `sanitize_allow_extra` widens the allowlist by named attributes (`onclick`) and elements (`<iframe>`) instead of dropping the filter entirely. Both are edited on the connection page; the list shows the state per connection. Existing installations get the columns with the safe default, so nothing changes for them until an admin changes it.
 - `tests/sanitizer.php`, a standalone script (no REDAXO, no database) covering the filter/sanitiser round trip: excluded regions keep their handlers, ordinary translated text does not, a disabled connection stores raw HTML, and an untouched connection stays on the safe default.
 
 ### Changed
-
 - Hardened the first restore pass of `VTransHtmlFilter` against an answer that pairs the placeholders itself and then loses a closing tag: the pattern no longer runs past a following opening placeholder to reach a distant `</vtrans-ph>`, which truncated everything in between. With sanitisation active this cannot occur — the sanitiser's parser balances the answer beforehand — so this only matters for connections with `sanitize_html = 0`, and the behaviour on the sanitised path is unchanged.
 - Schema: `rex_vtrans_connection` gains `sanitize_html` (`tinyint(1)`, default `1`) and `sanitize_allow_extra` (`text`, nullable). Added idempotently in `install.php`, so a reinstall and an installer update both apply them.
 
 ## [1.0.0-beta2] - 2026-09-07
 
 ### Fixed
-
 - Nested placeholders in the HTML filter are now fully resolved. `VTransHtmlFilter::prepare()` masks `script`/`style`/`code`/`svg` before it masks `data-vtrans-exclude` and `translate="no"`/`.notranslate` elements, so a stored fragment could itself contain placeholders. `restore()` ran a single pass and left those inner placeholders as literal `<vtrans-ph id="N"/>` text — an excluded block containing an SVG icon, a `<style>` or a `<script>` lost that content in the output. `restore()` now repeats until nothing changes, bounded by the number of placeholders.
 
 ### Changed
-
 - Internal cleanups with no effect on behaviour: the placeholder callback in `VTransHtmlFilter` moved into a typed method, and a condition in `VTrans::translate()` that could never evaluate to `false` was removed — a keyless cache hit returns one branch earlier, so the additional key check was already implied. The addon is clean under rexstan at level 10.
 
 ## [1.0.0-beta] - 2026-08-22
@@ -58,65 +47,54 @@ and fixes two display-level defects.
 with a migration; earlier records are not migrated.
 
 ### Added
-
 - `max_chars` is finally applied. The value was computed and never read, so the documented limit did not exist. It is now advisory: exceeding it writes a line to the REDAXO system log (once per connection and request) and the request still goes out, because rejecting would break every site whose articles are simply longer than the configured value.
 
 ### Fixed
-
 - A keyed record is now identified by key, **source language**, target language, connection and **format**. Previously the lookup ignored source and format, so the same key handed back HTML markup in a text context or a translation made from a different source language. The unique index was widened accordingly.
 - **Schema changes now reach existing installations.** REDAXO runs `update.php` — not `install.php` — when an already installed addon is updated through the installer, and `update.php` was empty. Every schema change since the first release therefore only ever applied to fresh installs or to a manual reinstall. `update.php` now runs the idempotent schema definition from `install.php`.
 - Search on the Data page escaped `%` and `_` in the wrong order, which doubled the escape character it had just inserted and left the wildcard active — searching for a literal `%` returned wrong rows. No injection was possible; values were still quoted.
 - The status of a failed record is escaped before output.
 
 ### Changed
-
 - `text` and `translation` are now `MEDIUMTEXT` instead of `TEXT`. `TEXT` holds 64 KB, so a longer HTML article was truncated on write and the stored `hash` no longer matched the stored `text`, leaving the cache entry permanently inconsistent.
 - `installer_ignore` excludes internal notes and editor files, so they cannot end up in an installer package built from a working copy.
 
 ### Removed
-
 - Dead assignment in the `vtrans_agent` → `vtrans_connection` migration.
 
 ## [0.9.1-beta] - 2026-08-19
 
 ### Added
-
 - Dependency `symfony/html-sanitizer` (pinned to the 7.x line, which supports PHP 8.2; 8.x requires PHP 8.4). `config.platform.php` is set to `8.2.0` so Composer resolves against the addon's declared minimum instead of the developer's local PHP version.
 - Provider errors are classified as `quota`, `auth`, `timeout` or `other` and stored with the HTTP status in the record's `data` column.
 - Request option `throwOnError` to override the context-dependent error behaviour in both directions.
 - `getLastResultMeta()` now reports `failed`, `error`, `errorType` and `httpStatus` for failed calls.
 
 ### Security
-
 - Untrusted HTML is sanitised before it is stored. Both the provider's answer and a translation edited on the Data page (open to `vtrans[]`, a permission that does not imply the right to publish HTML) are rendered as HTML in the frontend on every cache hit. Scripting, event attributes, frames, forms and `javascript:` URLs are removed via `symfony/html-sanitizer`; links, images, classes and inline styles are kept. The author's own `<script>`/`<style>` blocks are restored after sanitisation and stay untouched.
 - CSRF protection on every state-changing backend action. Deleting a record, the batch delete, saving an edited translation, and creating, editing, deleting, reordering or toggling a connection now all require a valid `rex_csrf_token`. Without it, a forged request could have repointed a connection's `api_url` at a foreign host, or wiped the whole translation table — the batch delete builds its `WHERE` from the filter parameters and is unbounded when no filter is set.
 - The batch delete additionally verifies the number of affected rows against the count shown on the button and aborts on mismatch.
 - Provider error messages are redacted before they are stored, logged or displayed. Guzzle embeds the full request URI in its exception messages, and Google Translate Basic v2 and MyMemory pass the API key as a query parameter — the key therefore reached the `data` column, which is readable on the Data page by every user holding `vtrans[]`, while the API keys themselves live on the admin-only Connections page.
 
 ### Changed
-
 - A failed provider call no longer produces a Whoops page in the frontend. `translate()` returns the untranslated source text, logs the exception to the REDAXO system log, and shows the message only to signed-in backend users. Backend and CLI keep throwing as before ([#7](https://github.com/FriendsOfREDAXO/vtrans/issues/7)).
 - Updated Guzzle to 7.15.3 for the security fixes in 7.15.1 and 7.15.2.
 
 ### Removed
-
 - Dead file `lib/Provider/VTransOpenAICompatibleProvider.php`, which PSR-4 never autoloaded because it declared `VTransOpenAIProvider`.
 
 ## [0.1.0-beta2] - 2026-06-26
 
 ### Changed
-
 - Bundled the Composer dependencies in the addon vendor directory so the addon installer can run without a separate Composer step.
 - Updated Guzzle-related dependencies to patched versions for current security fixes.
 
 ## [0.1.0-beta1] - 2026-06-18
 
 ### Added
-
 - Initial beta release of vTrans for REDAXO 5.
 
 ### Changed
-
 - Shifted configuration from static YAML-only lists to DB-backed backend connections with default/playground flags.
 - Renamed the OpenAI provider identifier from `openai-compatible` to `openai` across the addon codebase, class names, and documentation.
 - Improved provider handling for `context` and `customInstructions` where supported.

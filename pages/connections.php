@@ -288,6 +288,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $formElements[] = $n;
 
         // Provider-driven fields: all fields from getConfigFields(), in order.
+        $configFields = [];
         if ('' !== $currentProvider && isset($availableProviders[$currentProvider])) {
             $providerInstance = $availableProviders[$currentProvider];
             $configFields = $providerInstance->getConfigFields();
@@ -329,20 +330,13 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                     $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="3">' . rex_escape($fieldValue) . '</textarea>';
                 } elseif ('select' === $fieldDef['type']) {
                     $options = isset($fieldDef['options']) && is_array($fieldDef['options']) ? $fieldDef['options'] : [];
-                    $optionData = isset($fieldDef['option_data']) && is_array($fieldDef['option_data']) ? $fieldDef['option_data'] : [];
                     $optionsHtml = '';
                     if (empty($fieldDef['required'])) {
                         $optionsHtml .= '<option value="">–</option>';
                     }
                     foreach ($options as $optValue => $optLabel) {
                         $optValue = (string) $optValue;
-                        $attrs = '';
-                        if (isset($optionData[$optValue]) && is_array($optionData[$optValue])) {
-                            foreach ($optionData[$optValue] as $attrName => $attrVal) {
-                                $attrs .= ' ' . rex_escape((string) $attrName) . '="' . rex_escape((string) $attrVal) . '"';
-                            }
-                        }
-                        $optionsHtml .= '<option value="' . rex_escape($optValue) . '"' . ($optValue === (string) $fieldValue ? ' selected' : '') . $attrs . '>' . rex_escape((string) $optLabel) . '</option>';
+                        $optionsHtml .= '<option value="' . rex_escape($optValue) . '"' . ($optValue === (string) $fieldValue ? ' selected' : '') . '>' . rex_escape((string) $optLabel) . '</option>';
                     }
                     $n['field'] = '<select class="form-control selectpicker" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '">' . $optionsHtml . '</select>';
                 } elseif ('api_key' === $fieldName && '' !== $fieldValue && !$isFormPost) {
@@ -372,10 +366,9 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $n['field'] = '<input type="hidden" name="debug" value="0"><label class="control-label font-normal"><input type="checkbox" name="debug" value="1"' . ($currentDebug ? ' checked' : '') . '> ' . $this->i18n('vtrans_debug_activate') . '</label>';
         $formElements[] = $n;
 
-        // Timeout. The ai_platform provider makes no HTTP call itself (the ai_platform
-        // addon does), so the timeout is inert there — hide the field but keep the stored
-        // value via a hidden input so saving does not reset it.
-        if ('ai_platform' === $currentProvider) {
+        // Timeout. A provider that makes no HTTP call of its own declares the field as
+        // hidden; the stored value is kept via a hidden input so saving does not reset it.
+        if (!empty($configFields['timeout']['hidden'])) {
             $n = [];
             $n['label'] = '';
             $n['field'] = '<input type="hidden" name="timeout" value="' . rex_escape((string) $currentTimeout) . '" />';
@@ -388,21 +381,12 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
             $formElements[] = $n;
         }
 
-        // Max chars. For the ai_platform provider this is derived from the selected
-        // profile's max_tokens (see the JS below), so the field is hidden there — the
-        // value is still populated and submitted via the hidden input.
-        if ('ai_platform' === $currentProvider) {
-            $n = [];
-            $n['label'] = '';
-            $n['field'] = '<input type="hidden" id="vtrans-connection-max-chars" name="max_chars" value="' . rex_escape($currentMaxCharsRaw) . '" />';
-            $formElements[] = $n;
-        } else {
-            $n = [];
-            $n['label'] = '<label for="vtrans-connection-max-chars">' . $this->i18n('vtrans_connections_max_chars') . '</label>';
-            $n['field'] = '<input type="number" min="1" class="form-control" id="vtrans-connection-max-chars" name="max_chars" value="' . rex_escape($currentMaxCharsRaw) . '" placeholder="' . (int) VTrans::GLOBAL_MAX_CHARS . '" style="max-width:180px" />';
-            $n['note'] = '<p class="help-block">' . str_replace('{global}', (string) (int) VTrans::GLOBAL_MAX_CHARS, $this->i18n('vtrans_connections_max_chars_note')) . '</p>';
-            $formElements[] = $n;
-        }
+        // Max chars.
+        $n = [];
+        $n['label'] = '<label for="vtrans-connection-max-chars">' . $this->i18n('vtrans_connections_max_chars') . '</label>';
+        $n['field'] = '<input type="number" min="1" class="form-control" id="vtrans-connection-max-chars" name="max_chars" value="' . rex_escape($currentMaxCharsRaw) . '" placeholder="' . (int) VTrans::GLOBAL_MAX_CHARS . '" style="max-width:180px" />';
+        $n['note'] = '<p class="help-block">' . str_replace('{global}', (string) (int) VTrans::GLOBAL_MAX_CHARS, $this->i18n('vtrans_connections_max_chars_note')) . '</p>';
+        $formElements[] = $n;
 
         // Playground.
         $n = [];
@@ -458,64 +442,50 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $formAction = rex_url::currentBackendPage(['func' => $func] + ($id > 0 ? ['id' => $id] : []));
         echo '<form action="' . $formAction . '" method="post">' . $csrfToken->getHiddenField() . $content . '</form>';
 
-        // When an ai_platform profile is picked, prefill Key and Bezeichnung from the
+        // When a profile is picked (ai_platform), prefill Key and Bezeichnung from the
         // profile name as long as the fields are still empty (never overwrite manual input).
-        echo <<<'HTML'
+        // The script sits after the form, so the elements exist when it runs — binding
+        // directly instead of on rex:ready avoids stacking handlers on every PJAX load.
+        if (isset($configFields['profile_id'])) {
+            echo <<<'HTML'
 <script>
 (function () {
-    function initProfileAutofill() {
-        var sel = document.getElementById('vtrans-connection-profile_id');
-        var keyInput = document.getElementById('vtrans-connection-key');
-        var labelInput = document.getElementById('vtrans-connection-label');
-        if (!sel || !keyInput || !labelInput) {
+    var sel = document.getElementById('vtrans-connection-profile_id');
+    var keyInput = document.getElementById('vtrans-connection-key');
+    var labelInput = document.getElementById('vtrans-connection-label');
+    if (!sel || !keyInput || !labelInput) {
+        return;
+    }
+    function slug(text) {
+        return text.toString().toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+    function apply() {
+        var opt = sel.options[sel.selectedIndex];
+        if (!opt || '' === opt.value) {
             return;
         }
-        var maxChars = document.getElementById('vtrans-connection-max-chars');
-        function slug(text) {
-            return text.toString().toLowerCase()
-                .replace(/[^a-z0-9]+/g, '-')
-                .replace(/^-+|-+$/g, '');
+        var name = opt.text.replace(/\s*\(.*\)\s*$/, '').trim();
+        if ('' === labelInput.value.trim()) {
+            labelInput.value = name;
         }
-        function apply(isUserChange) {
-            var opt = sel.options[sel.selectedIndex];
-            if (!opt || '' === opt.value) {
-                return;
-            }
-            var name = opt.text.replace(/\s*\(.*\)\s*$/, '').trim();
-            if ('' === labelInput.value.trim()) {
-                labelInput.value = name;
-            }
-            if ('' === keyInput.value.trim()) {
-                var key = slug(name);
-                keyInput.value = '' !== key ? key : ('ki-platform-' + opt.value);
-            }
-            if (maxChars) {
-                var mt = parseInt(opt.getAttribute('data-max-tokens') || '', 10);
-                // Derive the "max characters" guideline from the profile's max_tokens
-                // (~4 characters per output token). Overwrite on a user change; on load
-                // only fill an empty field so a stored value survives.
-                if (mt > 0 && (isUserChange || '' === maxChars.value.trim())) {
-                    maxChars.value = String(mt * 4);
-                }
-            }
+        if ('' === keyInput.value.trim()) {
+            var key = slug(name);
+            keyInput.value = '' !== key ? key : ('ki-platform-' + opt.value);
         }
-        sel.addEventListener('change', function () { apply(true); });
-        if (window.jQuery) {
-            window.jQuery(sel).on('changed.bs.select', function () { apply(true); });
-        }
-        apply(false);
     }
-    function init() {
-        initProfileAutofill();
-    }
+    // bootstrap-select fires its change through jQuery, which a native listener misses.
     if (window.jQuery) {
-        window.jQuery(document).on('rex:ready', init);
+        window.jQuery(sel).on('change', apply);
     } else {
-        document.addEventListener('DOMContentLoaded', init);
+        sel.addEventListener('change', apply);
     }
+    apply();
 })();
 </script>
 HTML;
+        }
     }
 } else {
     // --- Connection list ---

@@ -108,7 +108,10 @@ Notes:
 - `ai_platform`
 - Delegates to a **text profile** of the [ai_platform](https://github.com/FriendsOfREDAXO/ai_platform) addon instead of calling an LLM endpoint directly
 - Provider, model, API key, temperature and token limits are all managed in the ai_platform profile — the vTrans connection only selects the profile
-- Put custom translation instructions in the vTrans connection's **System-Prompt** field, not in the ai_platform profile: vTrans includes the connection prompt in its cache hash, so changing it invalidates cached translations. The profile's own `system_prompt` is deliberately **not** applied here — vTrans cannot see it and would otherwise keep serving stale cached translations when it changes. vTrans always adds the per-call translation directive (source→target, HTML/plain) on top
+- vTrans builds the prompt itself: a fixed translation directive (source→target language, HTML or plain text, "return only the translation") is always sent, so the connection works with an empty **System-Prompt** field
+- The connection's **System-Prompt** field is *appended* to that directive as additional instructions (tone, terminology), followed by `context` and `customInstructions`. Unlike the `openai` provider, where a system prompt *replaces* the built-in one, the directive can never be lost here
+- The ai_platform profile's own `system_prompt` is deliberately **not** used: vTrans cannot see it, so changing it would not refresh cached translations. The connection prompt is part of the cache hash
+- The connection has no timeout of its own: the HTTP call is made by ai_platform
 - Requires the `ai_platform` addon; without it the provider is inert (empty profile select, clear error on use)
 
 ### Fake Local
