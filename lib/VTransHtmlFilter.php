@@ -15,6 +15,12 @@ namespace FriendsOfRedaxo\VTrans;
  *    their tags into a block appended to the payload, so providers that leave
  *    attributes alone in HTML mode translate them in the same request.
  *
+ * 4. Masks Twig syntax (`{{ … }}`, `{% … %}`, `{# … #}`) before anything
+ *    else: callers such as template-driven sites translate the source *before*
+ *    Twig renders it, and an LLM happily "translates" `{% endfor %}` into
+ *    `{% finalfor %}`. In text the construct becomes a placeholder element,
+ *    inside a tag a plain token (an element cannot sit inside an attribute).
+ *
  * After the translated text comes back, all placeholders are resolved back
  * to their original content and the translated attribute values are written
  * back into their tags.
@@ -48,6 +54,18 @@ class VTransHtmlFilter
 
 	/** Stand-in written into the attribute while its value travels in the carrier. */
 	private const ATTR_TOKEN = '__vtrans_attr_%d__';
+
+	/** Token written for a Twig construct inside a tag (attribute value or tag body). */
+	private const TWIG_TOKEN = '__vtrans_twig_%d__';
+
+	/** One Twig construct: expression, block tag or comment, whitespace control included. */
+	private const TWIG_PATTERN = '\{\{.*?\}\}|\{%.*?%\}|\{\#.*?\#\}';
+
+	/** @var array<int, string> id => original Twig construct masked by a token */
+	private array $twigTokens = [];
+
+	/** Twig constructs masked in total, as tokens or as placeholders. */
+	private int $twigCount = 0;
 
 	/** @var array<int, string> id => original content */
 	private array $map = [];
@@ -102,8 +120,14 @@ class VTransHtmlFilter
 		$this->map = [];
 		$this->nextId = 0;
 		$this->attrValues = [];
+		$this->twigTokens = [];
+		$this->twigCount = 0;
 
-		// 0. Protect vtrans-chunk placeholders emitted by VTransHtmlChunker.
+		// 0. Mask Twig syntax first, so none of the steps below — nor the provider —
+		//    can touch it.
+		$html = $this->maskTwig($html);
+
+		// 0b. Protect vtrans-chunk placeholders emitted by VTransHtmlChunker.
 		//    When translateHtml() translates a shell that contains chunk placeholders
 		//    alongside real text, this prevents providers from mangling them.
 		$html = preg_replace_callback(
@@ -150,9 +174,21 @@ class VTransHtmlFilter
 			$html = $this->restoreAttributes($html);
 		}
 
-		if ([] === $this->map) {
-			return $html;
+		if ([] !== $this->map) {
+			$html = $this->restorePlaceholders($html);
 		}
+
+		// Last: Twig tokens can sit in restored attribute values and in fragments
+		// the placeholders brought back.
+		foreach ($this->twigTokens as $id => $original) {
+			$html = str_replace(sprintf(self::TWIG_TOKEN, $id), $original, $html);
+		}
+
+		return $html;
+	}
+
+	private function restorePlaceholders(string $html): string
+	{
 
 		// First pass, over the provider's answer: replace self-closing and paired
 		// placeholder variants. The paired form is not just a provider quirk — the
@@ -214,6 +250,14 @@ class VTransHtmlFilter
 	}
 
 	/**
+	 * Return the number of Twig constructs {@see prepare()} masked.
+	 */
+	public function getTwigCount(): int
+	{
+		return $this->twigCount;
+	}
+
+	/**
 	 * Return the number of attribute values {@see prepare()} moved into the carrier.
 	 */
 	public function getAttributeCount(): int
@@ -224,6 +268,47 @@ class VTransHtmlFilter
 	// ------------------------------------------------------------------
 	// Internal helpers
 	// ------------------------------------------------------------------
+
+	/**
+	 * Mask Twig constructs. One pass walks the document as a sequence of tags and
+	 * text: a construct in text becomes a placeholder element, one inside a tag a
+	 * token, since an element there would break the markup. The tag pattern treats
+	 * Twig as an atomic unit, so `{% if a > b %}` or `{{ x ? "a" : "b" }}` inside a
+	 * tag does not end the tag or its attribute value early.
+	 */
+	private function maskTwig(string $html): string
+	{
+		if (!str_contains($html, '{{') && !str_contains($html, '{%') && !str_contains($html, '{#')) {
+			return $html;
+		}
+
+		$twig = self::TWIG_PATTERN;
+		$plain = '\{(?![{%\#])';
+		$tag = '<[a-zA-Z\/](?:' . $twig . '|"(?:' . $twig . '|[^"{]|' . $plain . ')*"|\'(?:' . $twig . '|[^\'{]|' . $plain . ')*\'|[^>"\'{]|' . $plain . ')*>';
+
+		return preg_replace_callback(
+			'/(' . $tag . ')|(?:' . $twig . ')/s',
+			function (array $m): string {
+				if (!isset($m[1]) || '' === $m[1]) {
+					++$this->twigCount;
+					return $this->placeholder($m[0]);
+				}
+
+				return preg_replace_callback(
+					'/' . self::TWIG_PATTERN . '/s',
+					function (array $t): string {
+						$id = count($this->twigTokens);
+						$this->twigTokens[$id] = $t[0];
+						++$this->twigCount;
+
+						return sprintf(self::TWIG_TOKEN, $id);
+					},
+					$m[1]
+				) ?? $m[1];
+			},
+			$html
+		) ?? $html;
+	}
 
 	/**
 	 * Replace <script>…</script>, <style>…</style>, etc. with placeholders.
@@ -505,7 +590,8 @@ class VTransHtmlFilter
 	 */
 	private static function isTranslatableValue(string $value): bool
 	{
-		$value = trim($value);
+		// A value made of Twig alone (`alt="{{ product.name }}"`) has nothing to translate.
+		$value = trim((string) preg_replace('/__vtrans_twig_\d+__/', '', $value));
 
 		return '' !== $value
 			&& 1 === preg_match('/\p{L}/u', $value)

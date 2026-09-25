@@ -401,6 +401,10 @@ When using the `html` format, a provider-independent HTML filter automatically p
 </div>
 ```
 
+### Template syntax (Twig, Mustache, …)
+
+`{{ … }}`, `{% … %}` and `{# … #}` are always protected — in text as well as inside attribute values. This matters when a template source is translated before it is rendered: otherwise a provider may "translate" `{% endfor %}` and break the template. Attribute values made of template syntax only (`alt="{{ product.name }}"`) are not sent. HTML without these delimiters is not affected.
+
 ### Translating attribute values (`alt`, `title`, …)
 
 Most providers translate only text in HTML mode and leave attributes alone. vTrans therefore

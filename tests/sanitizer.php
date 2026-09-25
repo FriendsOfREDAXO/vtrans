@@ -305,6 +305,39 @@ $assert('data: and javascript: URLs still removed', !str_contains($out, 'data:te
 $long = str_repeat('<p>Lorem ipsum dolor sit amet.</p>', 1000) . '<p>ENDE</p>';
 $assert('input over 20 KB is not truncated', str_contains(VTransSanitizer::sanitizeWith($long, true), 'ENDE'));
 
+echo "\n11) Twig syntax reaches the provider masked and comes back unchanged\n";
+
+$twigSource = '<ul class="list {{ cls }}">{% for item in items %}'
+    . '<li class="{% if item.active %}active{% endif %}" title="Artikel {{ item.name }}">'
+    . '<img src="{{ item.img }}" alt="{{ item.name }}"> Preis {{ item.price|number_format(2, \',\', \'.\') }} Euro</li>'
+    . '{% endfor %}</ul>{# Kommentar #}<a href="{{ url }}" data-x="{{ x ? "a" : "b" }}" {% if y > 1 %}hidden{% endif %}>Weiter</a>';
+
+// A provider that "translates" everything it can see, keywords included.
+$overeager = static fn (string $payload): string => str_replace(
+    ['endfor', 'endif', 'for ', 'if ', 'Kommentar', 'item', 'Weiter'],
+    ['finalfor', 'finalif', 'para ', 'si ', 'Comment', 'artículo', 'Next'],
+    $payload
+);
+
+$filter = new VTransHtmlFilter(VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
+$payload = $filter->prepare($twigSource);
+$assert('no Twig delimiter left in the payload', !preg_match('/\{\{|\{%|\{#/', $payload), 'payload: ' . $payload);
+$assert('Twig-only alt value not extracted', !str_contains($payload, '__vtrans_twig_') || !preg_match('/<vtrans-attr[^>]*>\s*__vtrans_twig_\d+__\s*</', $payload), 'payload: ' . $payload);
+$assert('twig count', 14 === $filter->getTwigCount(), 'count: ' . $filter->getTwigCount());
+
+$out = $roundTrip($twigSource, true, null, $overeager, VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
+foreach (['{% for item in items %}', '{% endfor %}', '{% if item.active %}', '{% endif %}', '{{ item.img }}', '{{ url }}', '{# Kommentar #}', '{{ x ? "a" : "b" }}'] as $construct) {
+    $assert('kept ' . $construct, str_contains($out, $construct), 'got: ' . $out);
+}
+$assert('no finalfor/finalif', !str_contains($out, 'final'), 'got: ' . $out);
+// Twig in the tag body (not in a value) survives the filter, but the sanitiser's DOM
+// round trip drops it as a malformed attribute — so only without sanitisation.
+$raw = $roundTrip($twigSource, false, null, $overeager, VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
+$assert('Twig in the tag body kept without sanitisation', str_contains($raw, '{% if y > 1 %}hidden{% endif %}>'), 'got: ' . $raw);
+$assert('text around Twig translated', str_contains($out, 'Next'), 'got: ' . $out);
+
+$assert('plain HTML untouched by the Twig step', (new VTransHtmlFilter())->prepare('<p>a { b } c</p>') === '<p>a { b } c</p>');
+
 echo "\n" . (0 === $failures ? "All checks passed.\n" : $failures . " check(s) failed.\n");
 
 exit(0 === $failures ? 0 : 1);

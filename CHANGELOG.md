@@ -10,6 +10,12 @@ Breaking changes may still occur until `1.0.0` is tagged.
 
 ## [Unreleased]
 
+### Fixed
+- Twig syntax in HTML sources is no longer translated. Sites that translate a template source before Twig renders it got `{% endfor %}` back as `{% finalfor %}` and a Twig syntax error. `VTransHtmlFilter` now masks `{{ … }}`, `{% … %}` and `{# … #}` before the request: in text as `<vtrans-ph>` placeholders, inside tags as `__vtrans_twig_N__` tokens. Attribute values that consist of Twig only are no longer sent for translation. Records with Twig in their source get a new cache hash and are re-translated once. Known limit: Twig in a tag body outside an attribute value (`<a {% if x %}hidden{% endif %}>`) is still dropped by the sanitiser, as before.
+
+### Documentation
+- README (en/de): new section on template syntax protection.
+
 ## [1.0.0-beta5] - 2026-09-25
 
 HTML translations now keep Bootstrap and other JavaScript components working and translate image descriptions and other attribute texts. Prompted by a Bootstrap carousel whose controls stopped working and whose `alt` texts stayed German on translated pages.

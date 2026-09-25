@@ -400,6 +400,10 @@ Beim Format `html` läuft automatisch ein provider-unabhängiger HTML-Filter, de
 </div>
 ```
 
+### Template-Syntax (Twig, Mustache, …)
+
+`{{ … }}`, `{% … %}` und `{# … #}` werden immer geschützt – im Text ebenso wie in Attributwerten. Das ist wichtig, wenn ein Template-Quelltext vor dem Rendern übersetzt wird: sonst „übersetzt“ ein Provider womöglich `{% endfor %}` und das Template bricht. Attributwerte, die nur aus Template-Syntax bestehen (`alt="{{ product.name }}"`), werden nicht mitgeschickt. HTML ohne diese Zeichenfolgen ist nicht betroffen.
+
 ### Attributwerte übersetzen (`alt`, `title`, …)
 
 Die meisten Provider übersetzen im HTML-Modus nur Text und lassen Attribute unangetastet.

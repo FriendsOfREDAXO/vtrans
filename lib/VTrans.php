@@ -1296,7 +1296,8 @@ class VTrans
 	 *
 	 * Only content it actually affects gets one: rows with translatable attributes
 	 * (the attribute list is part of it, so editing the list re-translates them)
-	 * and rows with data-/aria- attributes, which older versions stripped. Those
+	 * rows with data-/aria- attributes, which older versions stripped, and rows
+	 * with Twig syntax, which older versions sent to the provider unmasked. Those
 	 * rows miss the cache once and are re-translated on their next request; a
 	 * keyed row is updated in place. Everything else keeps its hash.
 	 *
@@ -1310,6 +1311,9 @@ class VTrans
 		}
 		if ([] !== VTransSanitizer::collectPassThroughAttributes($providerText)) {
 			$parts[] = 'data-aria';
+		}
+		if ($filter->getTwigCount() > 0) {
+			$parts[] = 'twig';
 		}
 
 		return [] !== $parts ? 'html:' . implode(';', $parts) : '';
