@@ -401,6 +401,30 @@ When using the `html` format, a provider-independent HTML filter automatically p
 </div>
 ```
 
+### Translating attribute values (`alt`, `title`, …)
+
+Most providers translate only text in HTML mode and leave attributes alone. vTrans therefore
+takes the values of translatable attributes out of their tags, sends them along in the same
+request as text of their own, and writes the translations back afterwards. There are no
+additional API calls.
+
+Translated by default: `alt`, `title`, `placeholder`, `aria-label`, `aria-description`,
+`aria-roledescription`, `aria-placeholder`, and `value` on buttons (`<input type="button">`,
+`submit`, `reset` — on every other element `value` is data and stays untouched).
+
+Values without letters (`aria-label="2"`), URLs, paths, file names (`IMG_1234.jpg`) and values
+containing markup are left alone, as is everything inside `translate="no"`, `.notranslate`
+and `data-vtrans-exclude` — including a marker on the element itself, e.g.
+`<img class="notranslate" alt="Brand name">`.
+
+The setting lives on the connection page (**Translate attributes**) and is on by default. The
+list of attributes can be replaced per connection, e.g. `alt title data-bs-title` for
+Bootstrap tooltips; leave it empty for the defaults.
+
+> Attribute values are translated without their surrounding sentence. Short values like a
+> brand name can come back translated literally; mark the element with `translate="no"` in
+> that case.
+
 ### Sanitisation of the result
 
 Everything that is stored in the `translation` column is sanitised on the way in, because
@@ -410,7 +434,13 @@ which is open to every user holding the `vtrans[]` permission.
 Removed are `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `<link>`,
 `<meta>`, all `on*` event attributes and `javascript:` / `data:` URLs. Ordinary article markup
 is kept: links, images, `srcset`, `class`, `id`, inline `style`, `title`, `lang`, `dir`,
-tables and lists.
+`role`, all `data-*` and `aria-*` attributes, tables and lists.
+
+`data-*` and `aria-*` stay because Bootstrap and similar components depend on them
+(`data-bs-toggle`, `data-bs-target`, `aria-expanded`, …) and the browser never executes their
+values. JavaScript on your site can, though: libraries such as Knockout (`data-bind`) or htmx
+(`data-hx-*`) turn data attributes into code or requests. If you use such a library, keep that
+markup out of translated regions with `.notranslate` or `data-vtrans-exclude`.
 
 Nothing you marked yourself is affected: your own `<script>` and `<style>` blocks and every
 region carrying `data-vtrans-exclude`, `translate="no"` or `.notranslate` are removed by the
@@ -431,7 +461,7 @@ connection:
   hit. Only defensible if you trust both the provider and everyone holding `vtrans[]`.
   Existing connections keep sanitisation on; the setting has to be switched off deliberately.
 - **Additionally allow** — the targeted alternative. Entries separated by spaces or commas:
-  a bare name allows an attribute on every element (`onclick`, `data-action`), a name in
+  a bare name allows an attribute on every element (`onclick`), a name in
   angle brackets allows an element (`<iframe>`). Everything else stays on the allowlist as
   it is, which is why this is preferable to switching sanitisation off.
 
@@ -444,6 +474,14 @@ connection:
 - `<style>…</style>`
 - `<code>…</code>`
 - `<svg>…</svg>`
+
+### Cache and existing records
+
+Records whose source contains translatable attributes or `data-*` / `aria-*` attributes get a
+new cache hash with this version. They are re-translated once, on their next request — keyed
+records are updated in place — and then carry translated attributes and keep their data and
+ARIA attributes. Records without such attributes keep their hash and are not sent again.
+Changing a connection's attribute list re-translates the affected records the same way.
 
 ---
 

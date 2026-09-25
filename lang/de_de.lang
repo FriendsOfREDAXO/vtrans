@@ -41,11 +41,16 @@ vtrans_connections_prio_note = Niedrigster Wert = Standard-Connection
 vtrans_connections_playground = Im Playground verfügbar
 vtrans_connections_sanitize = HTML-Bereinigung
 vtrans_connections_sanitize_activate = Übersetzungen dieser Verbindung vor dem Speichern bereinigen
-vtrans_connections_sanitize_note = Empfohlen. Entfernt Scripting aus allem, was für diese Verbindung gespeichert wird. Als „nicht übersetzen“ markierte Bereiche und eigene script-/style-Blöcke sind nie betroffen. Details in der Dokumentation.
+vtrans_connections_sanitize_note = Empfohlen. Entfernt Scripting aus allem, was für diese Verbindung gespeichert wird. data- und aria-Attribute bleiben erhalten. Als „nicht übersetzen“ markierte Bereiche und eigene script-/style-Blöcke sind nie betroffen. Details in der Dokumentation.
 vtrans_connections_sanitize_on = HTML-Bereinigung aktiv
 vtrans_connections_sanitize_off = HTML-Bereinigung aus
 vtrans_connections_sanitize_allow_extra = Zusätzlich erlauben
 vtrans_connections_sanitize_allow_extra_note = Nur bei aktiver Bereinigung wirksam. Blanker Name = Attribut (onclick), spitze Klammern = Element (&lt;iframe&gt;), getrennt durch Leerzeichen oder Komma.
+vtrans_connections_translate_attributes = Attribute übersetzen
+vtrans_connections_translate_attributes_activate = Attributwerte wie alt und title im HTML-Modus mitübersetzen
+vtrans_connections_translate_attributes_note = Die Werte laufen im selben Request mit, es entstehen keine zusätzlichen Aufrufe. Leere Werte, Zahlen, URLs und Dateinamen bleiben unverändert, ebenso alles in als „nicht übersetzen“ markierten Bereichen.
+vtrans_connections_translate_attribute_list = Zu übersetzende Attribute
+vtrans_connections_translate_attribute_list_note = Leer lassen für die Standardliste (siehe Platzhalter). value wird nur an Buttons (input type=button/submit/reset) übersetzt. Getrennt durch Leerzeichen oder Komma.
 vtrans_connections_timeout = Timeout (s)
 vtrans_connections_timeout_note = HTTP-Timeout in Sekunden pro API-Aufruf. Leer lassen für den globalen Standardwert ({global} s).
 vtrans_connections_max_chars = Max. Zeichen

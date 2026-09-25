@@ -10,8 +10,9 @@
  *
  * It covers what is easy to break and expensive to notice: excluded regions
  * must survive sanitisation with their event handlers, ordinary translated
- * text must not. It also checks VTransPrompt, whose HTML rule keeps the
- * placeholders the filter relies on.
+ * text must not; attribute values travel through the provider and back into
+ * their tags, and data-/aria- attributes survive. It also checks VTransPrompt,
+ * whose HTML rule keeps the placeholders the filter relies on.
  */
 
 require __DIR__ . '/../vendor/autoload.php';
@@ -35,8 +36,8 @@ $assert = static function (string $name, bool $ok, string $detail = '') use (&$f
  * Full round trip: mask, sanitise the provider's answer, restore.
  * The fake provider simply echoes the payload back unchanged.
  */
-$roundTrip = static function (string $html, bool $sanitizeEnabled = true, ?string $allowExtra = null, ?callable $provider = null): string {
-    $filter = new VTransHtmlFilter();
+$roundTrip = static function (string $html, bool $sanitizeEnabled = true, ?string $allowExtra = null, ?callable $provider = null, array $translateAttributes = []): string {
+    $filter = new VTransHtmlFilter($translateAttributes);
     $payload = $filter->prepare($html);
     if (null !== $provider) {
         $payload = $provider($payload);
@@ -169,6 +170,140 @@ $assert('connection prompt is not repeated as context', 1 === substr_count($out,
 $assert('instructions use real line breaks', str_contains($out, "Additional instructions:\n- Be brief") && !str_contains($out, '\\n'), 'got: ' . $out);
 
 $assert('prompt without target language is flagged', !VTransPrompt::mentionsTargetLanguage('Be formal.') && VTransPrompt::mentionsTargetLanguage('Into {target_lang_name}.'));
+
+echo "\n7) Slider: data-/aria- attributes survive, alt and title are translated in the same request\n";
+
+// A provider like DeepL in HTML mode: translates text, leaves attribute values alone.
+$dictionary = [
+    'Rote Jacke' => 'Red jacket',
+    'Warm & "gemütlich"' => 'Warm & "cosy"',
+    'Herbstkollektion' => 'Autumn collection',
+    'Jetzt entdecken' => 'Discover now',
+    'Zurück' => 'Previous',
+    'Suchen' => 'Search',
+    'Karussell' => 'Carousel',
+];
+$payloads = [];
+$deepl = static function (string $payload) use ($dictionary, &$payloads): string {
+    $payloads[] = $payload;
+    $encoded = [];
+    foreach ($dictionary as $de => $en) {
+        $encoded[htmlspecialchars($de, ENT_NOQUOTES)] = htmlspecialchars($en, ENT_NOQUOTES);
+    }
+
+    return strtr($payload, $encoded);
+};
+$attrs = VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES;
+
+$slider = '<div id="carousel-7" class="carousel slide" data-bs-ride="carousel" aria-roledescription="Karussell">'
+    . '<div class="carousel-indicators">'
+    . '<button type="button" data-bs-target="#carousel-7" data-bs-slide-to="0" class="active" aria-current="true" aria-label="1"></button>'
+    . '<button type="button" data-bs-target="#carousel-7" data-bs-slide-to="1" aria-label="2"></button>'
+    . '</div>'
+    . '<div class="carousel-inner"><div class="carousel-item active">'
+    . '<img loading="lazy" class="d-block w-100" alt="Rote Jacke" title="Warm &amp; &quot;gemütlich&quot;" src="/media/jacke.webp" srcset="/media/320/jacke.webp 320w, /media/640/jacke.webp 640w">'
+    . '<div class="carousel-caption"><div class="h2">Herbstkollektion</div><a class="btn btn-primary" href="/herbst/">Jetzt entdecken</a></div>'
+    . '</div></div>'
+    . '<button class="carousel-control-prev" type="button" data-bs-target="#carousel-7" data-bs-slide="prev">'
+    . '<span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Zurück</span></button>'
+    . '</div>';
+
+$payloads = [];
+$out = $roundTrip($slider, true, null, $deepl, $attrs);
+$assert('one request for text and attributes', 1 === count($payloads), 'requests: ' . count($payloads));
+$assert('source alt text not left in the tag', !str_contains($payloads[0] ?? '', 'alt="Rote Jacke"'), 'payload: ' . ($payloads[0] ?? ''));
+foreach (['data-bs-ride="carousel"', 'data-bs-target="#carousel-7"', 'data-bs-slide-to="1"', 'data-bs-slide="prev"', 'aria-current="true"', 'aria-hidden="true"', 'aria-label="1"'] as $kept) {
+    $assert('kept ' . $kept, str_contains($out, $kept), 'got: ' . $out);
+}
+$assert('alt translated', str_contains($out, 'alt="Red jacket"'), 'got: ' . $out);
+$assert('title translated and escaped', str_contains($out, 'title="Warm &amp; &quot;cosy&quot;"'), 'got: ' . $out);
+$assert('aria-roledescription translated', str_contains($out, 'aria-roledescription="Carousel"'), 'got: ' . $out);
+$assert('caption and hidden text translated', str_contains($out, 'Autumn collection') && str_contains($out, 'Previous'), 'got: ' . $out);
+$assert('src and srcset untouched', str_contains($out, 'src="/media/jacke.webp"') && str_contains($out, '/media/640/jacke.webp 640w'), 'got: ' . $out);
+$assert('no carrier or token left', !str_contains($out, 'vtrans-attr') && !str_contains($out, '__vtrans_attr_'), 'got: ' . $out);
+
+$out = $roundTrip($slider, false, null, $deepl, $attrs);
+$assert('works with sanitisation off', str_contains($out, 'alt="Red jacket"') && !str_contains($out, 'vtrans-attr'), 'got: ' . $out);
+
+echo "\n8) Translated attribute values cannot break out of their attribute\n";
+
+$hostile = static fn (string $payload): string => preg_replace(
+    '/(<vtrans-attr id="0">).*?(<\/vtrans-attr>)/s',
+    '$1Jacket" onmouseover="steal()" x="<b>bold</b><script>steal()</script>$2',
+    $payload
+) ?? $payload;
+foreach ([true, false] as $enabled) {
+    $out = $roundTrip('<p><img src="/a.jpg" alt="Jacke"> Text</p>', $enabled, null, $hostile, $attrs);
+    $label = $enabled ? ' (sanitised)' : ' (unsanitised)';
+    $dom = new DOMDocument();
+    @$dom->loadHTML('<?xml encoding="UTF-8">' . $out);
+    $img = $dom->getElementsByTagName('img')->item(0);
+    $assert('no new attribute' . $label, null !== $img && 2 === $img->attributes->length && !$img->hasAttribute('onmouseover'), 'got: ' . $out);
+    $assert('value is plain text' . $label, !str_contains($out, '<b>') && !str_contains($out, '<script'), 'got: ' . $out);
+}
+
+echo "\n9) Only real text is extracted\n";
+
+$extracted = static function (string $html) use ($attrs): int {
+    $filter = new VTransHtmlFilter($attrs);
+    $filter->prepare($html);
+
+    return $filter->getAttributeCount();
+};
+$skip = [
+    'empty value' => '<img alt="">',
+    'number' => '<button aria-label="3"></button>',
+    'URL' => '<a title="https://example.org/a">x</a>',
+    'path' => '<a title="/produkte/jacke">x</a>',
+    'file name' => '<img alt="IMG_1234.jpg">',
+    'markup' => '<span title="<b>x</b>">x</span>',
+    'not in the list' => '<div data-bs-title="Hallo">x</div>',
+    'value on a text input' => '<input type="text" value="Max Mustermann">',
+    'value on an option' => '<option value="rot">Rot</option>',
+    'notranslate void element' => '<img class="lazy notranslate" alt="Marke">',
+    'translate="no" void element' => '<img translate="no" alt="Marke">',
+    'data-vtrans-exclude void element' => '<img data-vtrans-exclude alt="Marke">',
+    'inside notranslate' => '<div class="notranslate"><img alt="Marke"></div>',
+    'inside data-vtrans-exclude' => '<div data-vtrans-exclude><a title="Marke">x</a></div>',
+];
+foreach ($skip as $name => $html) {
+    $assert('skips ' . $name, 0 === $extracted($html));
+}
+$take = [
+    'value on a submit button' => '<input type="submit" value="Absenden">',
+    'placeholder' => '<input type="search" placeholder="Suchen">',
+    'unquoted value' => '<img alt=Jacke>',
+    'single-quoted value' => "<abbr title='Gesellschaft mit beschränkter Haftung'>GmbH</abbr>",
+    'class merely containing notranslate' => '<img class="notranslate-hint" alt="Jacke">',
+];
+foreach ($take as $name => $html) {
+    $assert('takes ' . $name, 1 === $extracted($html));
+}
+
+$out = $roundTrip('<p><a href="/x" title="Mehr &gt; weniger" class="a>b">Suchen</a></p>', true, null, $deepl, $attrs);
+$assert('">" inside an attribute value does not end the tag', str_contains($out, 'title="Mehr &gt; weniger"') && str_contains($out, 'Search'), 'got: ' . $out);
+
+$out = $roundTrip('<p><img src="/a.jpg" alt="Rote Jacke"> Suchen</p>', true, null, static fn (string $p): string => preg_replace('/\s*<p><vtrans-attr.*$/s', '', $p) ?? $p, $attrs);
+$assert('carrier dropped by the provider: original value kept', str_contains($out, 'alt="Rote Jacke"') && !str_contains($out, '__vtrans_attr_'), 'got: ' . $out);
+
+$filter = new VTransHtmlFilter([]);
+$assert('empty list disables extraction', $filter->prepare('<img alt="Rote Jacke">') === '<img alt="Rote Jacke">');
+
+$assert('empty list spec falls back to the defaults', VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES === VTransHtmlFilter::parseAttributeList('  '));
+$assert('list spec is parsed', ['alt', 'data-bs-title'] === VTransHtmlFilter::parseAttributeList('ALT, data-bs-title; !!x'));
+
+echo "\n10) The sanitiser keeps data-/aria- attributes and still blocks scripting\n";
+
+$out = VTransSanitizer::sanitizeWith('<a href="/x" data-bs-toggle="tooltip" data-bs-title="Hi" aria-expanded="false" role="button" onclick="bad()">x</a>', true);
+$assert('data-* kept', str_contains($out, 'data-bs-toggle="tooltip"') && str_contains($out, 'data-bs-title="Hi"'), 'got: ' . $out);
+$assert('aria-* and role kept', str_contains($out, 'aria-expanded="false"') && str_contains($out, 'role="button"'), 'got: ' . $out);
+$assert('on* still removed', !str_contains($out, 'onclick'), 'got: ' . $out);
+
+$out = VTransSanitizer::sanitizeWith('<a href="data:text/html,<script>x</script>" data-x="1">a</a><a href="javascript:bad()">b</a>', true);
+$assert('data: and javascript: URLs still removed', !str_contains($out, 'data:text') && !str_contains($out, 'javascript:'), 'got: ' . $out);
+
+$long = str_repeat('<p>Lorem ipsum dolor sit amet.</p>', 1000) . '<p>ENDE</p>';
+$assert('input over 20 KB is not truncated', str_contains(VTransSanitizer::sanitizeWith($long, true), 'ENDE'));
 
 echo "\n" . (0 === $failures ? "All checks passed.\n" : $failures . " check(s) failed.\n");
 

@@ -22,6 +22,10 @@ rex_sql_table::get(rex::getTable('vtrans_connection'))
     // columns are added on update.
     ->ensureColumn(new rex_sql_column('sanitize_html', 'tinyint(1)', false, '1'))
     ->ensureColumn(new rex_sql_column('sanitize_allow_extra', 'text', true, null))
+    // Attribute translation is on by default, for new and existing connections.
+    // An empty list means the defaults of VTransHtmlFilter.
+    ->ensureColumn(new rex_sql_column('translate_attributes', 'tinyint(1)', false, '1'))
+    ->ensureColumn(new rex_sql_column('translate_attribute_list', 'text', true, null))
     ->ensureColumn(new rex_sql_column('createdate', 'datetime', false, 'CURRENT_TIMESTAMP'))
     ->ensureColumn(new rex_sql_column('createuser', 'varchar(255)', false, ''))
     ->ensureColumn(new rex_sql_column('updatedate', 'datetime', false, 'CURRENT_TIMESTAMP'))

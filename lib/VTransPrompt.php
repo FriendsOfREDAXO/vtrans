@@ -22,7 +22,7 @@ final class VTransPrompt
 	/** @var list<string> */
 	public const PLACEHOLDERS = ['{source_lang}', '{target_lang}', '{source_lang_name}', '{target_lang_name}'];
 
-	private const FORMAT_RULE_HTML = 'Input is HTML. Preserve HTML tags, attributes and structure, and keep every <vtrans-ph> element exactly as it is. Change only user-visible text.';
+	private const FORMAT_RULE_HTML = 'Input is HTML. Preserve HTML tags, attributes and structure, and keep every <vtrans-ph> element exactly as it is. Translate the text inside <vtrans-attr> elements but keep the elements themselves, and leave attribute values like __vtrans_attr_0__ unchanged. Change only user-visible text.';
 
 	private const FORMAT_RULE_TEXT = 'Input is plain text. Return plain text only.';
 

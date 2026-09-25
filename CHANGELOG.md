@@ -10,11 +10,25 @@ Breaking changes may still occur until `1.0.0` is tagged.
 
 ## [Unreleased]
 
+## [1.0.0-beta5] - 2026-09-25
+
+HTML translations now keep Bootstrap and other JavaScript components working and translate image descriptions and other attribute texts. Prompted by a Bootstrap carousel whose controls stopped working and whose `alt` texts stayed German on translated pages.
+
+### Added
+- Attribute values are translated in HTML mode: `alt`, `title`, `placeholder`, `aria-label`, `aria-description`, `aria-roledescription`, `aria-placeholder`, and `value` on `<input type="button|submit|reset">`. `VTransHtmlFilter` moves the values into a block appended to the same request and writes the translations back afterwards, so it works with every provider and needs no additional API calls. Values without letters, URLs, paths, file names and values containing markup are skipped, as is everything marked `translate="no"`, `.notranslate` or `data-vtrans-exclude`. Translated values are reduced to plain text and escaped before they go back into their attribute.
+- Per-connection settings "Attribute übersetzen" (on by default, also for existing connections) and an optional attribute list replacing the defaults (new columns `translate_attributes`, `translate_attribute_list`).
+
 ### Changed
+- The sanitiser keeps all `data-*` and `aria-*` attributes. They used to be stripped, which broke Bootstrap components (`data-bs-toggle`, `data-bs-target`, `data-bs-slide`, …) and removed accessibility labels. `on*` attributes, `javascript:`/`data:` URLs and script-capable elements are still removed.
+- Records whose source contains translatable attributes or `data-*`/`aria-*` attributes get a new cache hash and are re-translated once on their next request; keyed records are updated in place. All other records keep their hash.
+- The HTML rule of the LLM system prompt names the `<vtrans-attr>` carrier and the attribute tokens.
+- The attribute string markers `notranslate` and `data-vtrans-exclude` now match whole names only; `class="notranslate-hint"` no longer excludes an element.
 - The connection form hides "Zusätzlich erlauben" (`sanitize_allow_extra`) while HTML sanitisation is off, since it has no effect then; the stored value is kept. Contributed by [@TobiasKrais](https://github.com/TobiasKrais) ([#14](https://github.com/FriendsOfREDAXO/vtrans/pull/14)).
 - README formatting: blank lines around headings and lists, linked support URLs — in both the English and the German README. Contributed by [@TobiasKrais](https://github.com/TobiasKrais) ([#15](https://github.com/FriendsOfREDAXO/vtrans/pull/15)).
 
 ### Fixed
+- HTML sanitisation truncated every translation longer than 20,000 bytes: Symfony's HTML sanitizer cuts its input at that length by default. The limit is lifted; `max_chars` remains the place to bound request sizes.
+- A chunk shell whose only translatable content is attribute values (e.g. images with `alt` texts) is now translated instead of skipped.
 - The key field on the connection form validates in the browser again. Its pattern `[a-z0-9_-]+` is invalid under the `v` flag that current browsers use for the `pattern` attribute, so they ignored it and accepted any input until the server rejected it on save.
 
 ## [1.0.0-beta4] - 2026-09-21

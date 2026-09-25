@@ -400,6 +400,31 @@ Beim Format `html` läuft automatisch ein provider-unabhängiger HTML-Filter, de
 </div>
 ```
 
+### Attributwerte übersetzen (`alt`, `title`, …)
+
+Die meisten Provider übersetzen im HTML-Modus nur Text und lassen Attribute unangetastet.
+vTrans nimmt die Werte übersetzbarer Attribute deshalb aus ihren Tags, schickt sie im selben
+Request als eigenen Text mit und schreibt die Übersetzung danach zurück. Zusätzliche
+API-Aufrufe entstehen nicht.
+
+Standardmäßig übersetzt werden: `alt`, `title`, `placeholder`, `aria-label`,
+`aria-description`, `aria-roledescription`, `aria-placeholder` sowie `value` an Buttons
+(`<input type="button">`, `submit`, `reset` — an allen anderen Elementen ist `value` ein
+Datenwert und bleibt unverändert).
+
+Werte ohne Buchstaben (`aria-label="2"`), URLs, Pfade, Dateinamen (`IMG_1234.jpg`) und Werte
+mit Markup bleiben unverändert, ebenso alles innerhalb von `translate="no"`, `.notranslate`
+und `data-vtrans-exclude` — auch eine Markierung am Element selbst, etwa
+`<img class="notranslate" alt="Markenname">`.
+
+Die Einstellung liegt auf der Verbindungsseite (**Attribute übersetzen**) und ist
+standardmäßig an. Die Attributliste lässt sich pro Verbindung ersetzen, etwa durch
+`alt title data-bs-title` für Bootstrap-Tooltips; leer bedeutet die Standardliste.
+
+> Attributwerte werden ohne ihren umgebenden Satz übersetzt. Kurze Werte wie ein Markenname
+> können dabei wörtlich übersetzt zurückkommen; das Element dann mit `translate="no"`
+> markieren.
+
 ### Bereinigung des Ergebnisses
 
 Alles, was in der Spalte `translation` landet, wird beim Schreiben bereinigt — denn keine der
@@ -409,7 +434,14 @@ formular auf der Seite `Daten`, das jedem User mit der Berechtigung `vtrans[]` o
 Entfernt werden `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `<link>`,
 `<meta>`, sämtliche `on*`-Event-Attribute sowie `javascript:`- und `data:`-URLs. Normales
 Artikel-Markup bleibt erhalten: Links, Bilder, `srcset`, `class`, `id`, Inline-`style`,
-`title`, `lang`, `dir`, Tabellen und Listen.
+`title`, `lang`, `dir`, `role`, alle `data-*`- und `aria-*`-Attribute, Tabellen und Listen.
+
+`data-*` und `aria-*` bleiben, weil Bootstrap und vergleichbare Komponenten darauf angewiesen
+sind (`data-bs-toggle`, `data-bs-target`, `aria-expanded`, …) und der Browser ihre Werte nie
+ausführt. JavaScript auf deiner Seite kann das allerdings: Bibliotheken wie Knockout
+(`data-bind`) oder htmx (`data-hx-*`) machen aus Data-Attributen Code oder Requests. Wer so
+eine Bibliothek einsetzt, hält das Markup mit `.notranslate` oder `data-vtrans-exclude` aus
+übersetzten Bereichen heraus.
 
 Nichts, was du selbst markiert hast, ist betroffen: eigene `<script>`- und `<style>`-Blöcke
 sowie jeder Bereich mit `data-vtrans-exclude`, `translate="no"` oder `.notranslate` werden
@@ -432,8 +464,8 @@ Verbindung geschrieben wird:
   allen Nutzern mit `vtrans[]`-Recht vertraust. Bestehende Verbindungen bleiben bereinigt;
   die Einstellung muss bewusst abgeschaltet werden.
 - **Zusätzlich erlauben** — die gezielte Alternative. Einträge durch Leerzeichen oder Komma
-  getrennt: ein blanker Name erlaubt ein Attribut auf allen Elementen (`onclick`,
-  `data-action`), ein Name in spitzen Klammern ein Element (`<iframe>`). Alles andere bleibt
+  getrennt: ein blanker Name erlaubt ein Attribut auf allen Elementen (`onclick`), ein Name
+  in spitzen Klammern ein Element (`<iframe>`). Alles andere bleibt
   auf der Allowlist wie gehabt — deshalb ist das der Abschaltung vorzuziehen.
 
 > Besser als beide Einstellungen ist es, das betreffende Markup als ausgeschlossen zu
@@ -446,6 +478,15 @@ Verbindung geschrieben wird:
 - `<style>…</style>`
 - `<code>…</code>`
 - `<svg>…</svg>`
+
+### Cache und bestehende Datensätze
+
+Datensätze, deren Quelltext übersetzbare Attribute oder `data-*`-/`aria-*`-Attribute enthält,
+bekommen mit dieser Version einen neuen Cache-Hash. Sie werden einmal neu übersetzt, beim
+nächsten Aufruf — Datensätze mit Schlüssel werden dabei an Ort und Stelle aktualisiert — und
+haben danach übersetzte Attribute und behalten ihre Data- und ARIA-Attribute. Datensätze
+ohne solche Attribute behalten ihren Hash und werden nicht erneut gesendet. Eine geänderte
+Attributliste einer Verbindung übersetzt die betroffenen Datensätze auf dieselbe Weise neu.
 
 ---
 

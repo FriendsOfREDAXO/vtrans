@@ -11,8 +11,13 @@ namespace FriendsOfRedaxo\VTrans;
  * 2. Replaces elements marked with `translate="no"` or the CSS class
  *    `notranslate` — opening tag included — with compact placeholders.
  *
+ * 3. Moves translatable attribute values (alt, title, aria-label, …) out of
+ *    their tags into a block appended to the payload, so providers that leave
+ *    attributes alone in HTML mode translate them in the same request.
+ *
  * After the translated text comes back, all placeholders are resolved back
- * to their original content.
+ * to their original content and the translated attribute values are written
+ * back into their tags.
  */
 class VTransHtmlFilter
 {
@@ -22,11 +27,69 @@ class VTransHtmlFilter
 	/** Placeholder tag name — intentionally an unknown HTML element so APIs pass it through. */
 	private const PH_TAG = 'vtrans-ph';
 
+	/**
+	 * Attributes translated when a connection does not name its own list.
+	 * `value` is only ever taken from `<input type="button|submit|reset">`;
+	 * on every other element it is data, not text.
+	 */
+	public const DEFAULT_TRANSLATE_ATTRIBUTES = [
+		'alt',
+		'title',
+		'placeholder',
+		'aria-label',
+		'aria-description',
+		'aria-roledescription',
+		'aria-placeholder',
+		'value',
+	];
+
+	/** Carrier element for an extracted attribute value in the payload. */
+	private const ATTR_TAG = 'vtrans-attr';
+
+	/** Stand-in written into the attribute while its value travels in the carrier. */
+	private const ATTR_TOKEN = '__vtrans_attr_%d__';
+
 	/** @var array<int, string> id => original content */
 	private array $map = [];
 
 	/** Running placeholder counter. */
 	private int $nextId = 0;
+
+	/** @var list<string> lower-case attribute names to translate */
+	private array $translateAttributes;
+
+	/** @var array<int, string> id => original, entity-decoded attribute value */
+	private array $attrValues = [];
+
+	/**
+	 * @param list<string> $translateAttributes attribute names to translate; empty disables it
+	 */
+	public function __construct(array $translateAttributes = [])
+	{
+		$this->translateAttributes = array_values(array_unique(array_map('strtolower', $translateAttributes)));
+	}
+
+	/**
+	 * Parse the free-text attribute list of a connection.
+	 *
+	 * Entries are separated by whitespace, commas or semicolons; anything that
+	 * is not a valid attribute name is ignored. An empty list means "use the
+	 * defaults", not "translate nothing" — switching the feature off is a
+	 * separate setting.
+	 *
+	 * @return list<string>
+	 */
+	public static function parseAttributeList(?string $spec): array
+	{
+		$attributes = [];
+		foreach (preg_split('/[\s,;]+/', strtolower(trim((string) $spec))) ?: [] as $token) {
+			if (1 === preg_match('/^[a-z_:][a-z0-9_:.-]*$/', $token)) {
+				$attributes[$token] = true;
+			}
+		}
+
+		return [] !== $attributes ? array_keys($attributes) : self::DEFAULT_TRANSLATE_ATTRIBUTES;
+	}
 
 	/**
 	 * Pre-process HTML before sending it to a translation provider.
@@ -38,6 +101,7 @@ class VTransHtmlFilter
 	{
 		$this->map = [];
 		$this->nextId = 0;
+		$this->attrValues = [];
 
 		// 0. Protect vtrans-chunk placeholders emitted by VTransHtmlChunker.
 		//    When translateHtml() translates a shell that contains chunk placeholders
@@ -56,6 +120,12 @@ class VTransHtmlFilter
 
 		// 3. Protect translate="no" and class="notranslate" elements.
 		$html = $this->replaceNoTranslateElements($html);
+
+		// 4. Move translatable attribute values into a carrier block. This runs last,
+		//    so everything masked above is already a placeholder and out of reach.
+		if ([] !== $this->translateAttributes) {
+			$html = $this->extractAttributes($html);
+		}
 
 		return $html;
 	}
@@ -76,6 +146,10 @@ class VTransHtmlFilter
 	 */
 	public function restore(string $html): string
 	{
+		if ([] !== $this->attrValues) {
+			$html = $this->restoreAttributes($html);
+		}
+
 		if ([] === $this->map) {
 			return $html;
 		}
@@ -139,6 +213,14 @@ class VTransHtmlFilter
 		return count($this->map);
 	}
 
+	/**
+	 * Return the number of attribute values {@see prepare()} moved into the carrier.
+	 */
+	public function getAttributeCount(): int
+	{
+		return count($this->attrValues);
+	}
+
 	// ------------------------------------------------------------------
 	// Internal helpers
 	// ------------------------------------------------------------------
@@ -172,7 +254,7 @@ class VTransHtmlFilter
 
 		while ($pos < $len) {
 			if (!preg_match(
-				'/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\b' . $quotedAttr . '\b[^>]*>/si',
+				'/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*(?<![\w-])' . $quotedAttr . '(?![\w-])[^>]*>/si',
 				$html, $m, PREG_OFFSET_CAPTURE, $pos
 			)) {
 				$result .= substr($html, $pos);
@@ -225,7 +307,7 @@ class VTransHtmlFilter
 
 		while ($pos < $len) {
 			if (!preg_match(
-				'/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*(?:translate\s*=\s*["\']no["\']|class\s*=\s*["\'][^"\']*\bnotranslate\b[^"\']*["\'])[^>]*(?<!\/)>/si',
+				'/<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*(?:translate\s*=\s*["\']no["\']|class\s*=\s*["\'][^"\']*(?<![\w-])notranslate(?![\w-])[^"\']*["\'])[^>]*(?<!\/)>/si',
 				$html, $m, PREG_OFFSET_CAPTURE, $pos
 			)) {
 				$result .= substr($html, $pos);
@@ -292,6 +374,153 @@ class VTransHtmlFilter
 		}
 
 		return null;
+	}
+
+	/**
+	 * Replace translatable attribute values with tokens and append their text
+	 * to the payload, one `<p><vtrans-attr id="N">…</vtrans-attr></p>` each.
+	 *
+	 * The carrier sits at the end rather than next to its element: inline, a
+	 * provider would read it as part of the surrounding sentence and move words
+	 * across it. Each value gets its own paragraph so HTML-aware engines treat
+	 * it as a sentence of its own.
+	 */
+	private function extractAttributes(string $html): string
+	{
+		// Quote-aware: a `>` inside an attribute value does not end the tag.
+		$html = preg_replace_callback(
+			'/<([a-zA-Z][a-zA-Z0-9-]*)((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/',
+			$this->extractTagAttributes(...),
+			$html
+		) ?? $html;
+
+		if ([] === $this->attrValues) {
+			return $html;
+		}
+
+		$carrier = '';
+		foreach ($this->attrValues as $id => $value) {
+			$carrier .= '<p><' . self::ATTR_TAG . ' id="' . $id . '">'
+				. htmlspecialchars($value, ENT_NOQUOTES | ENT_SUBSTITUTE, 'UTF-8')
+				. '</' . self::ATTR_TAG . '></p>';
+		}
+
+		return $html . "\n" . $carrier;
+	}
+
+	/**
+	 * @param array<int|string, string> $m [full tag, tag name, attribute string]
+	 */
+	private function extractTagAttributes(array $m): string
+	{
+		$tagName = strtolower($m[1]);
+		$attributes = $m[2];
+
+		// Our own placeholders, and void elements carrying an exclusion marker:
+		// prepare() cannot mask those, as they have no closing tag to scan for.
+		if (str_starts_with($tagName, 'vtrans-') || '' === trim($attributes) || self::isMarkedExcluded($attributes)) {
+			return $m[0];
+		}
+
+		$inputType = null;
+		if ('input' === $tagName && 1 === preg_match('/(?:^|\s)type\s*=\s*["\']?([a-z]+)/i', $attributes, $typeMatch)) {
+			$inputType = strtolower($typeMatch[1]);
+		}
+
+		$attributes = preg_replace_callback(
+			'/(\s)([^\s"\'>\/=]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))/',
+			function (array $a) use ($tagName, $inputType): string {
+				$name = strtolower((string) $a[2]);
+				if (!in_array($name, $this->translateAttributes, true)) {
+					return (string) $a[0];
+				}
+				if ('value' === $name && ('input' !== $tagName || !in_array($inputType, ['button', 'submit', 'reset'], true))) {
+					return (string) $a[0];
+				}
+
+				$value = html_entity_decode((string) ($a[3] ?? $a[4] ?? $a[5] ?? ''), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+				if (!self::isTranslatableValue($value)) {
+					return (string) $a[0];
+				}
+
+				$id = count($this->attrValues);
+				$this->attrValues[$id] = $value;
+
+				return $a[1] . $a[2] . '="' . sprintf(self::ATTR_TOKEN, $id) . '"';
+			},
+			$attributes,
+			-1,
+			$count,
+			PREG_UNMATCHED_AS_NULL
+		) ?? $attributes;
+
+		return '<' . $m[1] . $attributes . '>';
+	}
+
+	/**
+	 * Pull the translated values out of the carrier block and write them back
+	 * into their tags. A value the provider dropped falls back to the original.
+	 */
+	private function restoreAttributes(string $html): string
+	{
+		$tag = preg_quote(self::ATTR_TAG, '/');
+		$translated = [];
+
+		$html = preg_replace_callback(
+			'/(?:<p\b[^>]*>\s*)?<' . $tag . '\s+id=["\']?(\d+)["\']?\s*>(.*?)<\/' . $tag . '>(?:\s*<\/p>)?/is',
+			static function (array $m) use (&$translated): string {
+				$translated[(int) $m[1]] = $m[2];
+				return '';
+			},
+			$html
+		) ?? $html;
+		$html = rtrim($html);
+
+		return preg_replace_callback(
+			'/=\s*(["\']?)__vtrans_attr_(\d+)__\1/',
+			function (array $m) use ($translated): string {
+				$id = (int) $m[2];
+				if (!isset($this->attrValues[$id])) {
+					return $m[0];
+				}
+
+				// The carrier content is provider output: take its text only. Escaping
+				// it again is what keeps a translated value inside its attribute.
+				$value = isset($translated[$id])
+					? trim((string) preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($translated[$id]), ENT_QUOTES | ENT_HTML5, 'UTF-8')))
+					: '';
+				if ('' === $value) {
+					$value = $this->attrValues[$id];
+				}
+
+				return '="' . htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '"';
+			},
+			$html
+		) ?? $html;
+	}
+
+	/**
+	 * True for values worth translating: some letters, and not a URL, path,
+	 * anchor, file name or markup.
+	 */
+	private static function isTranslatableValue(string $value): bool
+	{
+		$value = trim($value);
+
+		return '' !== $value
+			&& 1 === preg_match('/\p{L}/u', $value)
+			&& !str_contains($value, '<')
+			&& 1 !== preg_match('~^(?:[a-z][a-z0-9+.\-]*:|//|www\.|[./#])\S*$~i', $value)
+			&& 1 !== preg_match('/^\S+\.(?:jpe?g|png|gif|webp|avif|svg|bmp|tiff?|pdf)$/i', $value);
+	}
+
+	/** True when a tag's attribute string carries one of the exclusion markers. */
+	private static function isMarkedExcluded(string $attributes): bool
+	{
+		return 1 === preg_match(
+			'/(?<![\w-])data-vtrans-exclude(?![\w-])|translate\s*=\s*["\']?no\b|class\s*=\s*["\'][^"\']*(?<![\w-])notranslate(?![\w-])/i',
+			$attributes
+		);
 	}
 
 	/**

@@ -20,6 +20,14 @@ use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
  * `translate="no"` and `.notranslate` elements — survives untouched. Those
  * fragments are re-inserted after this class has run and never pass through it.
  *
+ * `data-*` and `aria-*` attributes are passed through untouched: Bootstrap
+ * and similar components depend on them, and their values are never executed
+ * by the browser itself. What stays blocked is what the browser does execute:
+ * `on*` handlers, `javascript:`/`data:` URLs, script-capable elements. A site
+ * whose JavaScript turns data attributes into code (Knockout's `data-bind`,
+ * htmx's `data-hx-*`) has to keep such markup out of translated regions with
+ * `notranslate`, or switch sanitisation off for that connection.
+ *
  * The behaviour is configurable per connection: `sanitize_html` switches it
  * off entirely, `sanitize_allow_extra` widens the allowlist. Both default to
  * the safe setting, so a connection that was never touched keeps sanitising.
@@ -58,7 +66,28 @@ final class VTransSanitizer
 			return $html;
 		}
 
-		return self::sanitizer((string) $allowExtra)->sanitize($html);
+		return self::sanitizer((string) $allowExtra, self::collectPassThroughAttributes($html))->sanitize($html);
+	}
+
+	/**
+	 * Names of all `data-*` and `aria-*` attributes that occur in $html.
+	 *
+	 * Symfony's allowlist knows exact names only, no prefixes, so the names are
+	 * collected from the input and allowed one by one. Matching a name that only
+	 * occurs in text is harmless: it allows an attribute that is not there.
+	 *
+	 * @return list<string>
+	 */
+	public static function collectPassThroughAttributes(string $html): array
+	{
+		if (false === preg_match_all('/(?<=[\s"\'\/])((?:data|aria)-[a-z0-9_.:-]+)(?=\s*=|[\s\/>])/i', $html, $matches)) {
+			return [];
+		}
+
+		$names = array_values(array_unique(array_map('strtolower', $matches[1])));
+		sort($names);
+
+		return $names;
 	}
 
 	/** True when $html contains something the sanitiser would remove. */
@@ -123,23 +152,31 @@ final class VTransSanitizer
 		return VTransConnection::getByKey(trim($connectionKey));
 	}
 
-	private static function sanitizer(string $allowExtra): HtmlSanitizer
+	/**
+	 * @param list<string> $passThrough data-/aria- attribute names found in the input
+	 */
+	private static function sanitizer(string $allowExtra, array $passThrough = []): HtmlSanitizer
 	{
 		$extra = self::parseAllowExtra($allowExtra);
-		$cacheKey = implode('|', $extra['elements']) . '#' . implode('|', $extra['attributes']);
+		$cacheKey = implode('|', $extra['elements']) . '#' . implode('|', $extra['attributes']) . '#' . md5(implode('|', $passThrough));
 
 		if (isset(self::$sanitizers[$cacheKey])) {
 			return self::$sanitizers[$cacheKey];
 		}
 
 		$config = (new HtmlSanitizerConfig())
+			// Symfony truncates input beyond 20,000 bytes by default, which silently
+			// cut every longer article short. Length is limited elsewhere (max_chars).
+			->withMaxInputLength(-1)
 			->allowSafeElements()
 			// The placeholder elements of VTransHtmlFilter and VTransHtmlChunker
 			// must survive — the translated text still carries them at this point.
 			// The sanitiser rewrites them to their paired form
 			// (`<vtrans-ph id="0"></vtrans-ph>`), which both restore() regexes match.
 			->allowElement('vtrans-ph', ['id'])
-			->allowElement('vtrans-chunk', ['id']);
+			->allowElement('vtrans-chunk', ['id'])
+			// Carrier of translated attribute values, taken apart by restore().
+			->allowElement('vtrans-attr', ['id']);
 
 		// Extra elements come first: allowAttribute('…', '*') below only reaches
 		// elements that are already allowed at that point.
@@ -165,7 +202,7 @@ final class VTransSanitizer
 			->allowRelativeLinks()
 			->allowRelativeMedias();
 
-		foreach ($extra['attributes'] as $attribute) {
+		foreach ([...$passThrough, ...$extra['attributes']] as $attribute) {
 			$config = $config->allowAttribute($attribute, '*');
 		}
 
