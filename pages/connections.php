@@ -332,7 +332,7 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
                 if ('textarea' === $fieldDef['type']) {
                     $n['field'] = '<textarea class="form-control" id="vtrans-connection-' . rex_escape($fieldName) . '" name="' . rex_escape($fieldName) . '" rows="' . ('system_prompt' === $fieldName ? 6 : 3) . '"' . $defaultAttr . '>' . rex_escape($fieldValue) . '</textarea>';
                 } elseif ('select' === $fieldDef['type']) {
-                    $options = isset($fieldDef['options']) && is_array($fieldDef['options']) ? $fieldDef['options'] : [];
+                    $options = $fieldDef['options'] ?? [];
                     $optionsHtml = '';
                     if (empty($fieldDef['required'])) {
                         $optionsHtml .= '<option value="">–</option>';

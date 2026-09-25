@@ -36,7 +36,12 @@ $assert = static function (string $name, bool $ok, string $detail = '') use (&$f
  * Full round trip: mask, sanitise the provider's answer, restore.
  * The fake provider simply echoes the payload back unchanged.
  */
-$roundTrip = static function (string $html, bool $sanitizeEnabled = true, ?callable $provider = null, array $translateAttributes = []): string {
+/**
+ * @param (callable(string): string)|null $provider
+ * @param list<string> $translateAttributes
+ */
+function roundTrip(string $html, bool $sanitizeEnabled = true, ?callable $provider = null, array $translateAttributes = []): string
+{
     $filter = new VTransHtmlFilter($translateAttributes);
     $payload = $filter->prepare($html);
     if (null !== $provider) {
@@ -44,7 +49,8 @@ $roundTrip = static function (string $html, bool $sanitizeEnabled = true, ?calla
     }
 
     return $filter->restore(VTransSanitizer::sanitizeWith($payload, $sanitizeEnabled));
-};
+}
+$roundTrip = roundTrip(...);
 
 echo "1) Excluded regions keep their on* attributes while the sanitiser is active\n";
 
@@ -188,6 +194,7 @@ $slider = '<div id="carousel-7" class="carousel slide" data-bs-ride="carousel" a
     . '<span class="carousel-control-prev-icon" aria-hidden="true"></span><span class="visually-hidden">Zurück</span></button>'
     . '</div>';
 
+/** @var list<string> $payloads filled by $deepl through its reference */
 $payloads = [];
 $out = $roundTrip($slider, true, $deepl, $attrs);
 $assert('one request for text and attributes', 1 === count($payloads), 'requests: ' . count($payloads));

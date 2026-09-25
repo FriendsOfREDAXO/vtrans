@@ -267,7 +267,7 @@ class VTransHtmlFilter
 		return preg_replace_callback(
 			'/(' . $tag . ')|(?:' . $twig . ')/s',
 			function (array $m): string {
-				if (!isset($m[1]) || '' === $m[1]) {
+				if (!isset($m[1])) {
 					++$this->twigCount;
 					return $this->placeholder($m[0]);
 				}

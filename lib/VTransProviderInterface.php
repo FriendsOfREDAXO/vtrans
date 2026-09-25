@@ -41,7 +41,7 @@ interface VTransProviderInterface
 	 * Config field definitions for the connection form.
 	 *
 	 * Returns an array of field definitions. Each key is the field name.
-	 * Fields with 'column' => true map to a dedicated DB column on rex_vtrans_agent,
+	 * Fields with 'column' => true map to a dedicated DB column on rex_vtrans_connection,
 	 * others are stored in the JSON params field. 'options' feeds a 'select' field;
 	 * 'hidden' => true on 'timeout' hides the dedicated timeout input for providers
 	 * that make no HTTP call of their own.
