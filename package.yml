@@ -27,7 +27,7 @@ page:
             title: translate:vtrans_documentation
             perm: admin
             icon: rex-icon fa-question-circle
-            itemclass: pull-right
+            itemClass: pull-right
             subpages:
                 readme:
                     title: translate:vtrans_documentation_readme
