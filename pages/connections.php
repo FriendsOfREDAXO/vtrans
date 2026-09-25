@@ -4,7 +4,6 @@
 
 use FriendsOfRedaxo\VTrans\VTrans;
 use FriendsOfRedaxo\VTrans\VTransConnection;
-use FriendsOfRedaxo\VTrans\VTransHtmlFilter;
 use FriendsOfRedaxo\VTrans\VTransPrompt;
 
 $func = rex_request('func', 'string', '');
@@ -105,9 +104,6 @@ if ($isFormSubmit) {
     $postPlayground = rex_post('playground', 'int', 1);
     $postDebug = rex_post('debug', 'int', 0);
     $postSanitizeHtml = rex_post('sanitize_html', 'int', 1);
-    $postSanitizeAllowExtra = rex_post('sanitize_allow_extra', 'string', '');
-    $postTranslateAttributes = rex_post('translate_attributes', 'int', 1);
-    $postTranslateAttributeList = rex_post('translate_attribute_list', 'string', '');
 
     // Common column fields.
     $postApiKey = rex_post('api_key', 'string', '');
@@ -188,9 +184,6 @@ if ($isFormSubmit) {
         $connection->setMaxChars($postMaxChars);
         $connection->setDebug((bool) $postDebug);
         $connection->setSanitizeHtml((bool) $postSanitizeHtml);
-        $connection->setSanitizeAllowExtra($postSanitizeAllowExtra);
-        $connection->setTranslateAttributes((bool) $postTranslateAttributes);
-        $connection->setTranslateAttributeList($postTranslateAttributeList);
         $connection->setParams($params);
         if (0 === $connection->getId()) {
             $connection->setPrio(VTransConnection::getNextPrio());
@@ -259,9 +252,6 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $currentDebug = $isFormPost ? rex_post('debug', 'int', 0) : (int) ($connection?->isDebug() ?? false);
         $currentPlayground = $isFormPost ? rex_post('playground', 'int', 1) : (int) ($connection?->isPlayground() ?? true);
         $currentSanitizeHtml = $isFormPost ? rex_post('sanitize_html', 'int', 1) : (int) ($connection?->isSanitizeHtml() ?? true);
-        $currentSanitizeAllowExtra = $isFormPost ? rex_post('sanitize_allow_extra', 'string', '') : ($connection?->getSanitizeAllowExtra() ?? '');
-        $currentTranslateAttributes = $isFormPost ? rex_post('translate_attributes', 'int', 1) : (int) ($connection?->isTranslateAttributes() ?? true);
-        $currentTranslateAttributeList = $isFormPost ? rex_post('translate_attribute_list', 'string', '') : ($connection?->getTranslateAttributeList() ?? '');
         $currentParams = $connection?->getParams() ?? [];
 
         $formElements = [];
@@ -414,25 +404,6 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
         $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_sanitize_note') . '</p>';
         $formElements[] = $n;
 
-        $n = [];
-        $n['label'] = '<label for="vtrans-connection-sanitize-allow-extra">' . $this->i18n('vtrans_connections_sanitize_allow_extra') . '</label>';
-        $n['field'] = '<textarea class="form-control" id="vtrans-connection-sanitize-allow-extra" name="sanitize_allow_extra" rows="2" placeholder="onclick &lt;iframe&gt;">' . rex_escape($currentSanitizeAllowExtra) . '</textarea>';
-        $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_sanitize_allow_extra_note') . '</p>';
-        $formElements[] = $n;
-
-        // Translation of attribute values (alt, title, …) in HTML requests.
-        $n = [];
-        $n['label'] = '<label>' . $this->i18n('vtrans_connections_translate_attributes') . '</label>';
-        $n['field'] = '<input type="hidden" name="translate_attributes" value="0"><label class="control-label font-normal"><input type="checkbox" id="vtrans-connection-translate-attributes" name="translate_attributes" value="1"' . ($currentTranslateAttributes ? ' checked' : '') . '> ' . $this->i18n('vtrans_connections_translate_attributes_activate') . '</label>';
-        $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_translate_attributes_note') . '</p>';
-        $formElements[] = $n;
-
-        $n = [];
-        $n['label'] = '<label for="vtrans-connection-translate-attribute-list">' . $this->i18n('vtrans_connections_translate_attribute_list') . '</label>';
-        $n['field'] = '<input type="text" class="form-control" id="vtrans-connection-translate-attribute-list" name="translate_attribute_list" value="' . rex_escape($currentTranslateAttributeList) . '" placeholder="' . rex_escape(implode(' ', VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES)) . '">';
-        $n['note'] = '<p class="help-block">' . $this->i18n('vtrans_connections_translate_attribute_list_note') . '</p>';
-        $formElements[] = $n;
-
         $fragment = new rex_fragment();
         $fragment->setVar('elements', $formElements, false);
         $content = $fragment->parse('core/form/form.php');
@@ -512,40 +483,6 @@ if ('add' === $func || ('edit' === $func && $id > 0)) {
 </script>
 HTML;
         }
-
-        // The "additionally allow" field only matters when HTML sanitisation is on, so
-        // hide it while the checkbox is unchecked; the value stays in the form and is
-        // saved unchanged. Bound directly for the same reason as the script above.
-        echo <<<'HTML'
-<script>
-(function () {
-    var cb = document.getElementById('vtrans-connection-sanitize-html');
-    var extra = document.getElementById('vtrans-connection-sanitize-allow-extra');
-    if (!cb || !extra) {
-        return;
-    }
-    var group = extra.closest('.form-group') || extra.parentNode;
-    function toggle() {
-        group.style.display = cb.checked ? '' : 'none';
-    }
-    cb.addEventListener('change', toggle);
-    toggle();
-})();
-(function () {
-    var cb = document.getElementById('vtrans-connection-translate-attributes');
-    var list = document.getElementById('vtrans-connection-translate-attribute-list');
-    if (!cb || !list) {
-        return;
-    }
-    var group = list.closest('.form-group') || list.parentNode;
-    function toggle() {
-        group.style.display = cb.checked ? '' : 'none';
-    }
-    cb.addEventListener('change', toggle);
-    toggle();
-})();
-</script>
-HTML;
     }
 } else {
     // --- Connection list ---

@@ -36,14 +36,14 @@ $assert = static function (string $name, bool $ok, string $detail = '') use (&$f
  * Full round trip: mask, sanitise the provider's answer, restore.
  * The fake provider simply echoes the payload back unchanged.
  */
-$roundTrip = static function (string $html, bool $sanitizeEnabled = true, ?string $allowExtra = null, ?callable $provider = null, array $translateAttributes = []): string {
+$roundTrip = static function (string $html, bool $sanitizeEnabled = true, ?callable $provider = null, array $translateAttributes = []): string {
     $filter = new VTransHtmlFilter($translateAttributes);
     $payload = $filter->prepare($html);
     if (null !== $provider) {
         $payload = $provider($payload);
     }
 
-    return $filter->restore(VTransSanitizer::sanitizeWith($payload, $sanitizeEnabled, $allowExtra));
+    return $filter->restore(VTransSanitizer::sanitizeWith($payload, $sanitizeEnabled));
 };
 
 echo "1) Excluded regions keep their on* attributes while the sanitiser is active\n";
@@ -73,7 +73,6 @@ $assert('text kept', str_contains($out, 'Hallo'), 'got: ' . $out);
 $out = $roundTrip(
     '<p>Hallo Welt</p>',
     true,
-    null,
     static fn (string $payload): string => $payload . '<script>steal()</script>'
 );
 $assert('script injected by the provider removed', !str_contains($out, 'steal()'), 'got: ' . $out);
@@ -100,7 +99,6 @@ $list = '<ul>'
 $out = $roundTrip(
     $list,
     false,
-    null,
     // An LLM provider normalises the self-closing placeholders into pairs — and drops
     // the closing tag of the first one. Without the guard in the phase 1 pattern, that
     // one missing tag lets the match run to the closing tag of the *next* placeholder.
@@ -125,30 +123,12 @@ echo "\n4) A connection without an explicit setting stays on the safe default\n"
 
 $connection = new VTransConnection();
 $assert('sanitize_html defaults to true', $connection->isSanitizeHtml());
-$assert('sanitize_allow_extra defaults to null', null === $connection->getSanitizeAllowExtra());
 $assert(
     'the default settings sanitise',
-    VTransSanitizer::sanitizeWith($raw, $connection->isSanitizeHtml(), $connection->getSanitizeAllowExtra()) !== $raw
+    VTransSanitizer::sanitizeWith($raw, $connection->isSanitizeHtml()) !== $raw
 );
 
-echo "\n5) sanitize_allow_extra widens the allowlist selectively\n";
-
-$out = $roundTrip('<p onclick="ok()">Hallo</p>', true, 'onclick');
-$assert('allowed attribute survives', str_contains($out, 'onclick="ok()"'), 'got: ' . $out);
-
-$out = $roundTrip('<p onclick="ok()" onmouseover="bad()">Hallo</p>', true, 'onclick');
-$assert('non-listed attribute still removed', !str_contains($out, 'onmouseover'), 'got: ' . $out);
-
-$out = $roundTrip('<iframe src="https://example.org/"></iframe>', true, '<iframe>');
-$assert('allowed element survives', str_contains($out, '<iframe'), 'got: ' . $out);
-
-$out = $roundTrip('<iframe src="https://example.org/"></iframe>', true, 'onclick');
-$assert('element not listed is still removed', !str_contains($out, '<iframe'), 'got: ' . $out);
-
-$parsed = VTransSanitizer::parseAllowExtra('onclick, <iframe>; data-action  !!bogus!!');
-$assert('parser splits elements and attributes', ['iframe'] === $parsed['elements'] && ['onclick', 'data-action'] === $parsed['attributes'], print_r($parsed, true));
-
-echo "\n6) VTransPrompt: a configured prompt replaces the default, placeholders resolve, the format rule stays\n";
+echo "\n5) VTransPrompt: a configured prompt replaces the default, placeholders resolve, the format rule stays\n";
 
 $labels = ['de' => 'German (DE)', 'en-gb' => 'English – British (EN-GB)'];
 
@@ -171,7 +151,7 @@ $assert('instructions use real line breaks', str_contains($out, "Additional inst
 
 $assert('prompt without target language is flagged', !VTransPrompt::mentionsTargetLanguage('Be formal.') && VTransPrompt::mentionsTargetLanguage('Into {target_lang_name}.'));
 
-echo "\n7) Slider: data-/aria- attributes survive, alt and title are translated in the same request\n";
+echo "\n6) Slider: data-/aria- attributes survive, alt and title are translated in the same request\n";
 
 // A provider like DeepL in HTML mode: translates text, leaves attribute values alone.
 $dictionary = [
@@ -209,7 +189,7 @@ $slider = '<div id="carousel-7" class="carousel slide" data-bs-ride="carousel" a
     . '</div>';
 
 $payloads = [];
-$out = $roundTrip($slider, true, null, $deepl, $attrs);
+$out = $roundTrip($slider, true, $deepl, $attrs);
 $assert('one request for text and attributes', 1 === count($payloads), 'requests: ' . count($payloads));
 $assert('source alt text not left in the tag', !str_contains($payloads[0] ?? '', 'alt="Rote Jacke"'), 'payload: ' . ($payloads[0] ?? ''));
 foreach (['data-bs-ride="carousel"', 'data-bs-target="#carousel-7"', 'data-bs-slide-to="1"', 'data-bs-slide="prev"', 'aria-current="true"', 'aria-hidden="true"', 'aria-label="1"'] as $kept) {
@@ -222,10 +202,10 @@ $assert('caption and hidden text translated', str_contains($out, 'Autumn collect
 $assert('src and srcset untouched', str_contains($out, 'src="/media/jacke.webp"') && str_contains($out, '/media/640/jacke.webp 640w'), 'got: ' . $out);
 $assert('no carrier or token left', !str_contains($out, 'vtrans-attr') && !str_contains($out, '__vtrans_attr_'), 'got: ' . $out);
 
-$out = $roundTrip($slider, false, null, $deepl, $attrs);
+$out = $roundTrip($slider, false, $deepl, $attrs);
 $assert('works with sanitisation off', str_contains($out, 'alt="Red jacket"') && !str_contains($out, 'vtrans-attr'), 'got: ' . $out);
 
-echo "\n8) Translated attribute values cannot break out of their attribute\n";
+echo "\n7) Translated attribute values cannot break out of their attribute\n";
 
 $hostile = static fn (string $payload): string => preg_replace(
     '/(<vtrans-attr id="0">).*?(<\/vtrans-attr>)/s',
@@ -233,7 +213,7 @@ $hostile = static fn (string $payload): string => preg_replace(
     $payload
 ) ?? $payload;
 foreach ([true, false] as $enabled) {
-    $out = $roundTrip('<p><img src="/a.jpg" alt="Jacke"> Text</p>', $enabled, null, $hostile, $attrs);
+    $out = $roundTrip('<p><img src="/a.jpg" alt="Jacke"> Text</p>', $enabled, $hostile, $attrs);
     $label = $enabled ? ' (sanitised)' : ' (unsanitised)';
     $dom = new DOMDocument();
     @$dom->loadHTML('<?xml encoding="UTF-8">' . $out);
@@ -242,7 +222,7 @@ foreach ([true, false] as $enabled) {
     $assert('value is plain text' . $label, !str_contains($out, '<b>') && !str_contains($out, '<script'), 'got: ' . $out);
 }
 
-echo "\n9) Only real text is extracted\n";
+echo "\n8) Only real text is extracted\n";
 
 $extracted = static function (string $html) use ($attrs): int {
     $filter = new VTransHtmlFilter($attrs);
@@ -280,19 +260,17 @@ foreach ($take as $name => $html) {
     $assert('takes ' . $name, 1 === $extracted($html));
 }
 
-$out = $roundTrip('<p><a href="/x" title="Mehr &gt; weniger" class="a>b">Suchen</a></p>', true, null, $deepl, $attrs);
+$out = $roundTrip('<p><a href="/x" title="Mehr &gt; weniger" class="a>b">Suchen</a></p>', true, $deepl, $attrs);
 $assert('">" inside an attribute value does not end the tag', str_contains($out, 'title="Mehr &gt; weniger"') && str_contains($out, 'Search'), 'got: ' . $out);
 
-$out = $roundTrip('<p><img src="/a.jpg" alt="Rote Jacke"> Suchen</p>', true, null, static fn (string $p): string => preg_replace('/\s*<p><vtrans-attr.*$/s', '', $p) ?? $p, $attrs);
+$out = $roundTrip('<p><img src="/a.jpg" alt="Rote Jacke"> Suchen</p>', true, static fn (string $p): string => preg_replace('/\s*<p><vtrans-attr.*$/s', '', $p) ?? $p, $attrs);
 $assert('carrier dropped by the provider: original value kept', str_contains($out, 'alt="Rote Jacke"') && !str_contains($out, '__vtrans_attr_'), 'got: ' . $out);
 
 $filter = new VTransHtmlFilter([]);
 $assert('empty list disables extraction', $filter->prepare('<img alt="Rote Jacke">') === '<img alt="Rote Jacke">');
 
-$assert('empty list spec falls back to the defaults', VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES === VTransHtmlFilter::parseAttributeList('  '));
-$assert('list spec is parsed', ['alt', 'data-bs-title'] === VTransHtmlFilter::parseAttributeList('ALT, data-bs-title; !!x'));
 
-echo "\n10) The sanitiser keeps data-/aria- attributes and still blocks scripting\n";
+echo "\n9) The sanitiser keeps data-/aria- attributes and still blocks scripting\n";
 
 $out = VTransSanitizer::sanitizeWith('<a href="/x" data-bs-toggle="tooltip" data-bs-title="Hi" aria-expanded="false" role="button" onclick="bad()">x</a>', true);
 $assert('data-* kept', str_contains($out, 'data-bs-toggle="tooltip"') && str_contains($out, 'data-bs-title="Hi"'), 'got: ' . $out);
@@ -305,7 +283,7 @@ $assert('data: and javascript: URLs still removed', !str_contains($out, 'data:te
 $long = str_repeat('<p>Lorem ipsum dolor sit amet.</p>', 1000) . '<p>ENDE</p>';
 $assert('input over 20 KB is not truncated', str_contains(VTransSanitizer::sanitizeWith($long, true), 'ENDE'));
 
-echo "\n11) Twig syntax reaches the provider masked and comes back unchanged\n";
+echo "\n10) Twig syntax reaches the provider masked and comes back unchanged\n";
 
 $twigSource = '<ul class="list {{ cls }}">{% for item in items %}'
     . '<li class="{% if item.active %}active{% endif %}" title="Artikel {{ item.name }}">'
@@ -325,14 +303,14 @@ $assert('no Twig delimiter left in the payload', !preg_match('/\{\{|\{%|\{#/', $
 $assert('Twig-only alt value not extracted', !str_contains($payload, '__vtrans_twig_') || !preg_match('/<vtrans-attr[^>]*>\s*__vtrans_twig_\d+__\s*</', $payload), 'payload: ' . $payload);
 $assert('twig count', 14 === $filter->getTwigCount(), 'count: ' . $filter->getTwigCount());
 
-$out = $roundTrip($twigSource, true, null, $overeager, VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
+$out = $roundTrip($twigSource, true, $overeager, VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
 foreach (['{% for item in items %}', '{% endfor %}', '{% if item.active %}', '{% endif %}', '{{ item.img }}', '{{ url }}', '{# Kommentar #}', '{{ x ? "a" : "b" }}'] as $construct) {
     $assert('kept ' . $construct, str_contains($out, $construct), 'got: ' . $out);
 }
 $assert('no finalfor/finalif', !str_contains($out, 'final'), 'got: ' . $out);
 // Twig in the tag body (not in a value) survives the filter, but the sanitiser's DOM
 // round trip drops it as a malformed attribute — so only without sanitisation.
-$raw = $roundTrip($twigSource, false, null, $overeager, VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
+$raw = $roundTrip($twigSource, false, $overeager, VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
 $assert('Twig in the tag body kept without sanitisation', str_contains($raw, '{% if y > 1 %}hidden{% endif %}>'), 'got: ' . $raw);
 $assert('text around Twig translated', str_contains($out, 'Next'), 'got: ' . $out);
 

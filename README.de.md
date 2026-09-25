@@ -421,9 +421,7 @@ mit Markup bleiben unverändert, ebenso alles innerhalb von `translate="no"`, `.
 und `data-vtrans-exclude` — auch eine Markierung am Element selbst, etwa
 `<img class="notranslate" alt="Markenname">`.
 
-Die Einstellung liegt auf der Verbindungsseite (**Attribute übersetzen**) und ist
-standardmäßig an. Die Attributliste lässt sich pro Verbindung ersetzen, etwa durch
-`alt title data-bs-title` für Bootstrap-Tooltips; leer bedeutet die Standardliste.
+Das ist immer aktiv und muss nicht eingestellt werden.
 
 > Attributwerte werden ohne ihren umgebenden Satz übersetzt. Kurze Werte wie ein Markenname
 > können dabei wörtlich übersetzt zurückkommen; das Element dann mit `translate="no"`
@@ -436,7 +434,7 @@ beiden Quellen ist admin-vertrauenswürdig: die Antwort des Providers, und das B
 formular auf der Seite `Daten`, das jedem User mit der Berechtigung `vtrans[]` offensteht.
 
 Entfernt werden `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `<link>`,
-`<meta>`, sämtliche `on*`-Event-Attribute sowie `javascript:`- und `data:`-URLs. Normales
+`<meta>`, sämtliche `on*`-Event-Attribute sowie `javascript`- und `data`-URLs. Normales
 Artikel-Markup bleibt erhalten: Links, Bilder, `srcset`, `class`, `id`, Inline-`style`,
 `title`, `lang`, `dir`, `role`, alle `data-*`- und `aria-*`-Attribute, Tabellen und Listen.
 
@@ -457,22 +455,15 @@ ein gecachter Datensatz wird unverändert zurückgegeben.
 > Datensätze aus der Zeit vor dieser Version wurden unbereinigt gespeichert. Wurde damals
 > eine Übersetzung manuell bearbeitet, lohnt sich ein Blick darauf.
 
-#### Pro Verbindung konfigurierbar
+#### Pro Verbindung abschaltbar
 
-Zwei Einstellungen auf der Verbindungsseite ändern das Verhalten für alles, was für diese
-Verbindung geschrieben wird:
-
-- **HTML-Bereinigung** — abgeschaltet werden die Antwort des Providers und jede manuelle
+- **HTML-Bereinigung** auf der Verbindungsseite — abgeschaltet werden die Antwort des Providers und jede manuelle
   Korrektur auf der Seite `Daten` roh gespeichert und im Frontend bei jedem Cache-Treffer
   ungefiltert als HTML ausgegeben. Nur vertretbar, wenn du sowohl dem Provider als auch
   allen Nutzern mit `vtrans[]`-Recht vertraust. Bestehende Verbindungen bleiben bereinigt;
   die Einstellung muss bewusst abgeschaltet werden.
-- **Zusätzlich erlauben** — die gezielte Alternative. Einträge durch Leerzeichen oder Komma
-  getrennt: ein blanker Name erlaubt ein Attribut auf allen Elementen (`onclick`), ein Name
-  in spitzen Klammern ein Element (`<iframe>`). Alles andere bleibt
-  auf der Allowlist wie gehabt — deshalb ist das der Abschaltung vorzuziehen.
 
-> Besser als beide Einstellungen ist es, das betreffende Markup als ausgeschlossen zu
+> Besser als das Abschalten ist es, das betreffende Markup als ausgeschlossen zu
 > markieren — ein ausgeschlossener Bereich erreicht den Sanitizer gar nicht erst, und nichts
 > anderes auf der Seite wird aufgeweicht.
 
@@ -489,8 +480,7 @@ Datensätze, deren Quelltext übersetzbare Attribute oder `data-*`-/`aria-*`-Att
 bekommen mit dieser Version einen neuen Cache-Hash. Sie werden einmal neu übersetzt, beim
 nächsten Aufruf — Datensätze mit Schlüssel werden dabei an Ort und Stelle aktualisiert — und
 haben danach übersetzte Attribute und behalten ihre Data- und ARIA-Attribute. Datensätze
-ohne solche Attribute behalten ihren Hash und werden nicht erneut gesendet. Eine geänderte
-Attributliste einer Verbindung übersetzt die betroffenen Datensätze auf dieselbe Weise neu.
+ohne solche Attribute behalten ihren Hash und werden nicht erneut gesendet.
 
 ---
 

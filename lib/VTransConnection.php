@@ -29,9 +29,6 @@ class VTransConnection
 	private int $prio = 0;
 	private bool $playground = true;
 	private bool $sanitizeHtml = true;
-	private ?string $sanitizeAllowExtra = null;
-	private bool $translateAttributes = true;
-	private ?string $translateAttributeList = null;
 	private string $createdate = '';
 	private string $createuser = '';
 	private string $updatedate = '';
@@ -228,9 +225,6 @@ class VTransConnection
 		$sql->setValue('prio', $this->prio);
 		$sql->setValue('playground', (int) $this->playground);
 		$sql->setValue('sanitize_html', (int) $this->sanitizeHtml);
-		$sql->setValue('sanitize_allow_extra', $this->sanitizeAllowExtra);
-		$sql->setValue('translate_attributes', (int) $this->translateAttributes);
-		$sql->setValue('translate_attribute_list', $this->translateAttributeList);
 
 		$login = (string) (rex::getUser()?->getLogin() ?? 'system');
 
@@ -318,20 +312,6 @@ class VTransConnection
 	public function getPrio(): int { return $this->prio; }
 	public function isPlayground(): bool { return $this->playground; }
 	public function isSanitizeHtml(): bool { return $this->sanitizeHtml; }
-	public function getSanitizeAllowExtra(): ?string { return $this->sanitizeAllowExtra; }
-	public function isTranslateAttributes(): bool { return $this->translateAttributes; }
-	public function getTranslateAttributeList(): ?string { return $this->translateAttributeList; }
-
-	/**
-	 * Attribute names whose values are translated in HTML requests of this
-	 * connection; empty when the feature is switched off.
-	 *
-	 * @return list<string>
-	 */
-	public function getTranslateAttributes(): array
-	{
-		return $this->translateAttributes ? VTransHtmlFilter::parseAttributeList($this->translateAttributeList) : [];
-	}
 	public function getCreatedate(): string { return $this->createdate; }
 	public function getCreateuser(): string { return $this->createuser; }
 	public function getUpdatedate(): string { return $this->updatedate; }
@@ -354,9 +334,6 @@ class VTransConnection
 	public function setPrio(int $prio): self { $this->prio = $prio; return $this; }
 	public function setPlayground(bool $playground): self { $this->playground = $playground; return $this; }
 	public function setSanitizeHtml(bool $sanitizeHtml): self { $this->sanitizeHtml = $sanitizeHtml; return $this; }
-	public function setSanitizeAllowExtra(?string $sanitizeAllowExtra): self { $this->sanitizeAllowExtra = (null !== $sanitizeAllowExtra && '' !== trim($sanitizeAllowExtra)) ? trim($sanitizeAllowExtra) : null; return $this; }
-	public function setTranslateAttributes(bool $translateAttributes): self { $this->translateAttributes = $translateAttributes; return $this; }
-	public function setTranslateAttributeList(?string $translateAttributeList): self { $this->translateAttributeList = (null !== $translateAttributeList && '' !== trim($translateAttributeList)) ? trim($translateAttributeList) : null; return $this; }
 
 	// --- Internal ---
 
@@ -378,11 +355,6 @@ class VTransConnection
 		$connection->prio = (int) $sql->getValue('prio');
 		$connection->playground = (bool) (int) $sql->getValue('playground');
 		$connection->sanitizeHtml = (bool) (int) $sql->getValue('sanitize_html');
-		$rawAllowExtra = $sql->getValue('sanitize_allow_extra');
-		$connection->sanitizeAllowExtra = (null !== $rawAllowExtra && '' !== trim((string) $rawAllowExtra)) ? trim((string) $rawAllowExtra) : null;
-		$connection->translateAttributes = (bool) (int) $sql->getValue('translate_attributes');
-		$rawAttributeList = $sql->getValue('translate_attribute_list');
-		$connection->translateAttributeList = (null !== $rawAttributeList && '' !== trim((string) $rawAttributeList)) ? trim((string) $rawAttributeList) : null;
 		$connection->createdate = (string) $sql->getValue('createdate');
 		$connection->createuser = (string) $sql->getValue('createuser');
 		$connection->updatedate = (string) $sql->getValue('updatedate');

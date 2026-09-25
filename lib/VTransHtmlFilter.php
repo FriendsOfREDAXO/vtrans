@@ -34,8 +34,8 @@ class VTransHtmlFilter
 	private const PH_TAG = 'vtrans-ph';
 
 	/**
-	 * Attributes translated when a connection does not name its own list.
-	 * `value` is only ever taken from `<input type="button|submit|reset">`;
+	 * Attributes whose values are translated in HTML mode. Most providers leave
+	 * attributes untouched, so vTrans sends these values along itself. `value` is only ever taken from `<input type="button|submit|reset">`;
 	 * on every other element it is data, not text.
 	 */
 	public const DEFAULT_TRANSLATE_ATTRIBUTES = [
@@ -85,28 +85,6 @@ class VTransHtmlFilter
 	public function __construct(array $translateAttributes = [])
 	{
 		$this->translateAttributes = array_values(array_unique(array_map('strtolower', $translateAttributes)));
-	}
-
-	/**
-	 * Parse the free-text attribute list of a connection.
-	 *
-	 * Entries are separated by whitespace, commas or semicolons; anything that
-	 * is not a valid attribute name is ignored. An empty list means "use the
-	 * defaults", not "translate nothing" — switching the feature off is a
-	 * separate setting.
-	 *
-	 * @return list<string>
-	 */
-	public static function parseAttributeList(?string $spec): array
-	{
-		$attributes = [];
-		foreach (preg_split('/[\s,;]+/', strtolower(trim((string) $spec))) ?: [] as $token) {
-			if (1 === preg_match('/^[a-z_:][a-z0-9_:.-]*$/', $token)) {
-				$attributes[$token] = true;
-			}
-		}
-
-		return [] !== $attributes ? array_keys($attributes) : self::DEFAULT_TRANSLATE_ATTRIBUTES;
 	}
 
 	/**

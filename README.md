@@ -421,9 +421,7 @@ containing markup are left alone, as is everything inside `translate="no"`, `.no
 and `data-vtrans-exclude` — including a marker on the element itself, e.g.
 `<img class="notranslate" alt="Brand name">`.
 
-The setting lives on the connection page (**Translate attributes**) and is on by default. The
-list of attributes can be replaced per connection, e.g. `alt title data-bs-title` for
-Bootstrap tooltips; leave it empty for the defaults.
+This is always on and needs no configuration.
 
 > Attribute values are translated without their surrounding sentence. Short values like a
 > brand name can come back translated literally; mark the element with `translate="no"` in
@@ -436,7 +434,7 @@ neither source is admin-trusted: the provider's answer, and the edit form on the
 which is open to every user holding the `vtrans[]` permission.
 
 Removed are `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, `<base>`, `<link>`,
-`<meta>`, all `on*` event attributes and `javascript:` / `data:` URLs. Ordinary article markup
+`<meta>`, all `on*` event attributes and `javascript` and `data` URLs. Ordinary article markup
 is kept: links, images, `srcset`, `class`, `id`, inline `style`, `title`, `lang`, `dir`,
 `role`, all `data-*` and `aria-*` attributes, tables and lists.
 
@@ -455,21 +453,14 @@ handler. Sanitisation happens on write, never on read: a cached record is return
 > Records written before this version were stored unsanitised. If a translation was edited
 > manually back then, it is worth reviewing it.
 
-#### Configuring it per connection
+#### Switching it off per connection
 
-Two settings on the connection page change the behaviour for everything written for that
-connection:
-
-- **HTML sanitisation** — switching it off stores the provider's answer and every manual
+- **HTML sanitisation** on the connection page — switching it off stores the provider's answer and every manual
   edit on the `Data` page raw, and the frontend renders it as unfiltered HTML on every cache
   hit. Only defensible if you trust both the provider and everyone holding `vtrans[]`.
   Existing connections keep sanitisation on; the setting has to be switched off deliberately.
-- **Additionally allow** — the targeted alternative. Entries separated by spaces or commas:
-  a bare name allows an attribute on every element (`onclick`), a name in
-  angle brackets allows an element (`<iframe>`). Everything else stays on the allowlist as
-  it is, which is why this is preferable to switching sanitisation off.
 
-> Prefer marking the markup in question as excluded over both settings — an excluded region
+> Prefer marking the markup in question as excluded over switching sanitisation off — an excluded region
 > never reaches the sanitiser in the first place, and nothing else on the page is weakened.
 
 ### Automatically excluded tags
@@ -485,7 +476,6 @@ Records whose source contains translatable attributes or `data-*` / `aria-*` att
 new cache hash with this version. They are re-translated once, on their next request — keyed
 records are updated in place — and then carry translated attributes and keep their data and
 ARIA attributes. Records without such attributes keep their hash and are not sent again.
-Changing a connection's attribute list re-translates the affected records the same way.
 
 ---
 

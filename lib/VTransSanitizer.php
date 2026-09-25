@@ -28,9 +28,8 @@ use Symfony\Component\HtmlSanitizer\HtmlSanitizerConfig;
  * htmx's `data-hx-*`) has to keep such markup out of translated regions with
  * `notranslate`, or switch sanitisation off for that connection.
  *
- * The behaviour is configurable per connection: `sanitize_html` switches it
- * off entirely, `sanitize_allow_extra` widens the allowlist. Both default to
- * the safe setting, so a connection that was never touched keeps sanitising.
+ * Sanitisation can be switched off per connection (`sanitize_html`). It
+ * defaults to on, so a connection that was never touched keeps sanitising.
  */
 final class VTransSanitizer
 {
@@ -52,7 +51,6 @@ final class VTransSanitizer
 		return self::sanitizeWith(
 			$html,
 			null === $connection || $connection->isSanitizeHtml(),
-			$connection?->getSanitizeAllowExtra(),
 		);
 	}
 
@@ -60,13 +58,13 @@ final class VTransSanitizer
 	 * Sanitise with explicit settings instead of a connection lookup.
 	 * Kept public so the behaviour can be exercised without a database.
 	 */
-	public static function sanitizeWith(string $html, bool $enabled, ?string $allowExtra = null): string
+	public static function sanitizeWith(string $html, bool $enabled): string
 	{
 		if (!$enabled || '' === trim($html)) {
 			return $html;
 		}
 
-		return self::sanitizer((string) $allowExtra, self::collectPassThroughAttributes($html))->sanitize($html);
+		return self::sanitizer(self::collectPassThroughAttributes($html))->sanitize($html);
 	}
 
 	/**
@@ -104,45 +102,6 @@ final class VTransSanitizer
 		return null === $connection || $connection->isSanitizeHtml();
 	}
 
-	/**
-	 * Split the free-text allowlist into elements and attributes.
-	 *
-	 * Entries are separated by whitespace, commas or semicolons. `<iframe>`
-	 * allows an element (with the safe attributes of the W3C reference),
-	 * a bare `onclick` allows an attribute on every allowed element.
-	 * Anything that is not a valid HTML name is ignored.
-	 *
-	 * @return array{elements: list<string>, attributes: list<string>}
-	 */
-	public static function parseAllowExtra(?string $spec): array
-	{
-		$elements = [];
-		$attributes = [];
-
-		foreach (preg_split('/[\s,;]+/', strtolower(trim((string) $spec))) ?: [] as $token) {
-			if ('' === $token) {
-				continue;
-			}
-
-			if (str_starts_with($token, '<')) {
-				$name = trim($token, '<>/');
-				if (1 === preg_match('/^[a-z][a-z0-9-]*$/', $name)) {
-					$elements[$name] = true;
-				}
-				continue;
-			}
-
-			if (1 === preg_match('/^[a-z_:][a-z0-9_:.-]*$/', $token)) {
-				$attributes[$token] = true;
-			}
-		}
-
-		return [
-			'elements' => array_keys($elements),
-			'attributes' => array_keys($attributes),
-		];
-	}
-
 	private static function resolveConnection(?string $connectionKey): ?VTransConnection
 	{
 		if (null === $connectionKey || '' === trim($connectionKey)) {
@@ -155,10 +114,9 @@ final class VTransSanitizer
 	/**
 	 * @param list<string> $passThrough data-/aria- attribute names found in the input
 	 */
-	private static function sanitizer(string $allowExtra, array $passThrough = []): HtmlSanitizer
+	private static function sanitizer(array $passThrough = []): HtmlSanitizer
 	{
-		$extra = self::parseAllowExtra($allowExtra);
-		$cacheKey = implode('|', $extra['elements']) . '#' . implode('|', $extra['attributes']) . '#' . md5(implode('|', $passThrough));
+		$cacheKey = md5(implode('|', $passThrough));
 
 		if (isset(self::$sanitizers[$cacheKey])) {
 			return self::$sanitizers[$cacheKey];
@@ -176,15 +134,7 @@ final class VTransSanitizer
 			->allowElement('vtrans-ph', ['id'])
 			->allowElement('vtrans-chunk', ['id'])
 			// Carrier of translated attribute values, taken apart by restore().
-			->allowElement('vtrans-attr', ['id']);
-
-		// Extra elements come first: allowAttribute('…', '*') below only reaches
-		// elements that are already allowed at that point.
-		foreach ($extra['elements'] as $element) {
-			$config = $config->allowElement($element, '*');
-		}
-
-		$config = $config
+			->allowElement('vtrans-attr', ['id'])
 			// allowSafeElements() drops these, which would strip every class and
 			// therefore every bit of styling out of a translated article.
 			->allowAttribute('class', '*')
@@ -202,7 +152,7 @@ final class VTransSanitizer
 			->allowRelativeLinks()
 			->allowRelativeMedias();
 
-		foreach ([...$passThrough, ...$extra['attributes']] as $attribute) {
+		foreach ($passThrough as $attribute) {
 			$config = $config->allowAttribute($attribute, '*');
 		}
 

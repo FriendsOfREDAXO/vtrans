@@ -118,10 +118,8 @@ class VTrans
 		// HTML filter: pre-process to protect excluded/non-translatable content.
 		$htmlFilter = null;
 		$providerText = $text;
-		$translateAttributes = [];
 		if ('html' === $format) {
-			$translateAttributes = self::getTranslateAttributes(self::normalizeStringValue($connectionData['key'] ?? null));
-			$htmlFilter = new VTransHtmlFilter($translateAttributes);
+			$htmlFilter = new VTransHtmlFilter(VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
 			$providerText = $htmlFilter->prepare($text);
 		}
 
@@ -129,7 +127,7 @@ class VTrans
 			$text,
 			$promptContext,
 			$customInstructions,
-			null !== $htmlFilter ? self::buildHtmlHashVariant($htmlFilter, $providerText, $translateAttributes) : '',
+			null !== $htmlFilter ? self::buildHtmlHashVariant($htmlFilter, $providerText) : '',
 		);
 
 		if (null === $targetLang) {
@@ -612,7 +610,7 @@ class VTrans
 		// Translatable attribute values count as content: a shell of images with alt
 		// texts has no text nodes but still needs a request.
 		$shellWithoutPlaceholders = (string) preg_replace('/<vtrans-chunk\b[^>]*\/>/i', '', $shellHtml);
-		$shellFilter = new VTransHtmlFilter(self::getTranslateAttributes(self::normalizeStringValue($requestOptions['connection'] ?? $requestOptions['agent'] ?? $requestOptions['model'] ?? null)));
+		$shellFilter = new VTransHtmlFilter(VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
 		$shellFilter->prepare($shellWithoutPlaceholders);
 		if ('' !== trim(strip_tags($shellWithoutPlaceholders)) || $shellFilter->getAttributeCount() > 0) {
 			$translatedShell = self::translate($shellHtml, $srcLang, $targetLang, 'html', $shellKey, array_merge($requestOptions, ['_skipChunking' => true]));
@@ -1294,20 +1292,17 @@ class VTrans
 	/**
 	 * Fingerprint of the HTML processing that changed the result of a request.
 	 *
-	 * Only content it actually affects gets one: rows with translatable attributes
-	 * (the attribute list is part of it, so editing the list re-translates them)
+	 * Only content it actually affects gets one: rows with translatable attributes,
 	 * rows with data-/aria- attributes, which older versions stripped, and rows
 	 * with Twig syntax, which older versions sent to the provider unmasked. Those
 	 * rows miss the cache once and are re-translated on their next request; a
 	 * keyed row is updated in place. Everything else keeps its hash.
-	 *
-	 * @param list<string> $translateAttributes
 	 */
-	private static function buildHtmlHashVariant(VTransHtmlFilter $filter, string $providerText, array $translateAttributes): string
+	private static function buildHtmlHashVariant(VTransHtmlFilter $filter, string $providerText): string
 	{
 		$parts = [];
 		if ($filter->getAttributeCount() > 0) {
-			$parts[] = 'attrs:' . implode(',', $translateAttributes);
+			$parts[] = 'attrs:' . implode(',', VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES);
 		}
 		if ([] !== VTransSanitizer::collectPassThroughAttributes($providerText)) {
 			$parts[] = 'data-aria';
@@ -1319,19 +1314,6 @@ class VTrans
 		return [] !== $parts ? 'html:' . implode(';', $parts) : '';
 	}
 
-	/**
-	 * Attribute names to translate for a connection; an empty key means the
-	 * default connection. Unknown connections fall back to the defaults —
-	 * translate() fails on them anyway, with a proper message.
-	 *
-	 * @return list<string>
-	 */
-	private static function getTranslateAttributes(string $connectionKey): array
-	{
-		$connection = '' !== $connectionKey ? VTransConnection::getByKey($connectionKey) : VTransConnection::getDefault();
-
-		return null !== $connection ? $connection->getTranslateAttributes() : VTransHtmlFilter::DEFAULT_TRANSLATE_ATTRIBUTES;
-	}
 
 	/**
 	 * Build the data payload for a pending DB entry (before the API call).

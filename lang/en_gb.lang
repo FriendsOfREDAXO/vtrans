@@ -41,16 +41,9 @@ vtrans_connections_prio_note = Lowest value = default connection
 vtrans_connections_playground = Available in playground
 vtrans_connections_sanitize = HTML sanitisation
 vtrans_connections_sanitize_activate = Sanitise translations of this connection before storing them
-vtrans_connections_sanitize_note = Recommended. Removes scripting from everything stored for this connection. data- and aria- attributes are kept. Regions marked as "do not translate" and your own script/style blocks are never affected. See the documentation for details.
+vtrans_connections_sanitize_note = Recommended. Removes scripts and other unsafe parts from the translations. Regions marked as "do not translate" stay unchanged.
 vtrans_connections_sanitize_on = HTML sanitisation on
 vtrans_connections_sanitize_off = HTML sanitisation off
-vtrans_connections_sanitize_allow_extra = Additionally allow
-vtrans_connections_sanitize_allow_extra_note = Only effective while sanitisation is active. Bare name = attribute (onclick), angle brackets = element (&lt;iframe&gt;), separated by spaces or commas.
-vtrans_connections_translate_attributes = Translate attributes
-vtrans_connections_translate_attributes_activate = Also translate attribute values such as alt and title in HTML mode
-vtrans_connections_translate_attributes_note = The values travel in the same request, no additional calls are made. Empty values, numbers, URLs and file names stay unchanged, as does everything inside regions marked as "do not translate".
-vtrans_connections_translate_attribute_list = Attributes to translate
-vtrans_connections_translate_attribute_list_note = Leave empty for the default list (see placeholder). value is only translated on buttons (input type=button/submit/reset). Separated by spaces or commas.
 vtrans_connections_timeout = Timeout (s)
 vtrans_connections_timeout_note = HTTP timeout in seconds per API request. Leave empty to use the global default ({global} s).
 vtrans_connections_max_chars = Max. chars

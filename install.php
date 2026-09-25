@@ -21,11 +21,6 @@ rex_sql_table::get(rex::getTable('vtrans_connection'))
     // Sanitisation is on by default, so existing connections stay safe when the
     // columns are added on update.
     ->ensureColumn(new rex_sql_column('sanitize_html', 'tinyint(1)', false, '1'))
-    ->ensureColumn(new rex_sql_column('sanitize_allow_extra', 'text', true, null))
-    // Attribute translation is on by default, for new and existing connections.
-    // An empty list means the defaults of VTransHtmlFilter.
-    ->ensureColumn(new rex_sql_column('translate_attributes', 'tinyint(1)', false, '1'))
-    ->ensureColumn(new rex_sql_column('translate_attribute_list', 'text', true, null))
     ->ensureColumn(new rex_sql_column('createdate', 'datetime', false, 'CURRENT_TIMESTAMP'))
     ->ensureColumn(new rex_sql_column('createuser', 'varchar(255)', false, ''))
     ->ensureColumn(new rex_sql_column('updatedate', 'datetime', false, 'CURRENT_TIMESTAMP'))
@@ -35,6 +30,25 @@ rex_sql_table::get(rex::getTable('vtrans_connection'))
     ->ensureIndex(new rex_sql_index('is_default', ['is_default']))
     ->ensureIndex(new rex_sql_index('prio', ['prio']))
     ->ensure();
+
+// Per-connection settings that were dropped again: the sanitiser allowlist
+// (1.0.0-beta3) and the attribute translation switch and list (never released).
+// Attribute translation is always on now, with a fixed list.
+try {
+    $connectionTable = rex_sql_table::get(rex::getTable('vtrans_connection'));
+    $dropColumns = array_filter(
+        ['sanitize_allow_extra', 'translate_attributes', 'translate_attribute_list'],
+        static fn (string $column): bool => $connectionTable->hasColumn($column),
+    );
+    if ([] !== $dropColumns) {
+        foreach ($dropColumns as $column) {
+            $connectionTable->removeColumn($column);
+        }
+        $connectionTable->alter();
+    }
+} catch (rex_sql_exception $e) {
+    rex_logger::logException($e);
+}
 
 // Translation cache table.
 rex_sql_table::get(rex::getTable('vtrans'))
