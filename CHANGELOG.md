@@ -10,15 +10,9 @@ Breaking changes may still occur until `1.0.0` is tagged.
 
 ## [Unreleased]
 
-### Fixed
-- Twig syntax in HTML sources is no longer translated. Sites that translate a template source before Twig renders it got `{% endfor %}` back as `{% finalfor %}` and a Twig syntax error. `VTransHtmlFilter` now masks `{{ … }}`, `{% … %}` and `{# … #}` before the request: in text as `<vtrans-ph>` placeholders, inside tags as `__vtrans_twig_N__` tokens. Attribute values that consist of Twig only are no longer sent for translation. Records with Twig in their source get a new cache hash and are re-translated once. Known limit: Twig in a tag body outside an attribute value (`<a {% if x %}hidden{% endif %}>`) is still dropped by the sanitiser, as before.
-
-### Documentation
-- README (en/de): new section on template syntax protection.
-
 ## [1.0.0-beta5] - 2026-09-25
 
-HTML translations now keep Bootstrap and other JavaScript components working and translate image descriptions and other attribute texts. Prompted by a Bootstrap carousel whose controls stopped working and whose `alt` texts stayed German on translated pages.
+HTML translations now keep Bootstrap and other JavaScript components working, translate image descriptions and other attribute texts, and leave Twig and other template syntax untouched. Prompted by a Bootstrap carousel whose controls stopped working and whose `alt` texts stayed German on translated pages.
 
 ### Added
 - Attribute values are translated in HTML mode: `alt`, `title`, `placeholder`, `aria-label`, `aria-description`, `aria-roledescription`, `aria-placeholder`, and `value` on `<input type="button|submit|reset">`. `VTransHtmlFilter` moves the values into a block appended to the same request and writes the translations back afterwards, so it works with every provider and needs no additional API calls. Values without letters, URLs, paths, file names and values containing markup are skipped, as is everything marked `translate="no"`, `.notranslate` or `data-vtrans-exclude`. Translated values are reduced to plain text and escaped before they go back into their attribute.
@@ -36,6 +30,11 @@ HTML translations now keep Bootstrap and other JavaScript components working and
 - HTML sanitisation truncated every translation longer than 20,000 bytes: Symfony's HTML sanitizer cuts its input at that length by default. The limit is lifted; `max_chars` remains the place to bound request sizes.
 - A chunk shell whose only translatable content is attribute values (e.g. images with `alt` texts) is now translated instead of skipped.
 - The key field on the connection form validates in the browser again. Its pattern `[a-z0-9_-]+` is invalid under the `v` flag that current browsers use for the `pattern` attribute, so they ignored it and accepted any input until the server rejected it on save.
+- Twig syntax in HTML sources is no longer translated. Sites that translate a template source before Twig renders it got `{% endfor %}` back as `{% finalfor %}` and a Twig syntax error. `VTransHtmlFilter` now masks `{{ … }}`, `{% … %}` and `{# … #}` before the request: in text as `<vtrans-ph>` placeholders, inside tags as `__vtrans_twig_N__` tokens. Attribute values that consist of Twig only are no longer sent for translation. Records with Twig in their source get a new cache hash and are re-translated once. Known limit: Twig in a tag body outside an attribute value (`<a {% if x %}hidden{% endif %}>`) is still dropped by the sanitiser, as before.
+- The backend page property `itemclass` is spelled `itemClass`, as REDAXO expects it. Contributed by [@TobiasKrais](https://github.com/TobiasKrais) ([#16](https://github.com/FriendsOfREDAXO/vtrans/pull/16)).
+
+### Documentation
+- README (en/de): new section on template syntax protection.
 
 ## [1.0.0-beta4] - 2026-09-21
 
